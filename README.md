@@ -1,121 +1,127 @@
 # rice-repo
 
-Configuration Hyprland sur Arch Linux, construite au-dessus des dotfiles
-[JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) et étendue avec quatre
-applications GTK4 maison.
+A Hyprland setup on Arch Linux, built on top of the
+[JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) dotfiles and extended with
+four custom GTK4 applications.
 
-Le principe qui gouverne tout le dépôt : **aucune couleur n'est écrite en dur.**
-Le fond d'écran détermine la palette, et tout le reste s'y aligne
-automatiquement — barre, panneaux, lanceur, terminal, notifications.
+One rule governs the whole repository: **no colour is ever hardcoded.** The
+wallpaper decides the palette, and everything else follows automatically — bar,
+panels, launcher, terminal, notifications, login screen.
 
 ---
 
-## Les quatre applications
+## The four applications
 
-Écrites en Python + GTK4 / libadwaita, bilingues français / anglais avec
-sélecteur de langue, et thémées par la palette du système.
+Written in Python + GTK4 / libadwaita, bilingual French / English with a language
+switcher, and themed from the system palette.
 
-| | Raccourci | Rôle |
+| | Shortcut | What it does |
 |---|---|---|
-| **HyprSettings** | `Super + Maj + K` | Panneau de réglages : espacements, décoration, flou, barre, souris et clavier |
-| **HyprKeys** | `Super + Maj + /` | Éditeur graphique des raccourcis — capture la combinaison de touches à la volée |
-| **HyprWhale** | clic sur la baleine | Menu Docker : conteneurs, démarrage/arrêt, terminal, journaux |
-| **CheatSheet** | `Super + /` | Liste filtrable des raccourcis dans rofi |
+| **HyprSettings** | `Super + Shift + K` | Settings panel: spacing, decoration, blur, bar, mouse and keyboard |
+| **HyprKeys** | `Super + Shift + /` | Graphical keybinding editor — captures the key combination as you press it |
+| **HyprWhale** | click the whale | Docker menu: containers, start/stop, terminal, logs |
+| **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
 
 ### HyprSettings
 
-Chaque curseur s'applique **en direct** via `hyprctl keyword` ; rien n'est écrit
-sur disque tant qu'on n'a pas cliqué sur *Enregistrer*. Il écrit dans quatre
-fichiers différents selon le réglage — `looknfeel.conf`, `input.conf`, la config
-waybar et sa feuille de style — en ne touchant que la valeur concernée.
+Every slider applies **live** through `hyprctl keyword`; nothing touches disk
+until you press *Save*. It writes to four different files depending on the
+setting — `looknfeel.conf`, `input.conf`, the waybar config and its stylesheet —
+changing only the value concerned.
 
 ### HyprKeys
 
-Lit et réécrit `keybinds.conf` en préservant commentaires, ordre et mise en
-forme. Le bouton de combinaison capture les touches réellement pressées et les
-traduit en syntaxe Hyprland (`$mainMod SHIFT, S`).
+Reads and rewrites `keybinds.conf` while preserving comments, ordering and
+formatting. The combination button captures the keys you actually press and
+translates them into Hyprland syntax (`$mainMod SHIFT, S`).
 
 ### HyprWhale
 
-Se rafraîchit toutes les 3 secondes en arrière-plan. Les couleurs d'état
-(vert / ambre / rouge) sont **volontairement exclues** du thème : un conteneur
-planté doit rester rouge même sous un accent vert.
+Refreshes every 3 seconds in a background thread. State colours (green / amber /
+red) are **deliberately excluded** from the theme: a crashed container has to
+stay red even under a green accent.
 
-Le menu contextuel `⋯` s'adapte à l'état — *Supprimer* est grisé sur un
-conteneur actif, *Ouvrir localhost:port* sur un conteneur arrêté.
+The `⋯` context menu adapts to state — *Remove* is greyed out on a running
+container, *Open localhost:port* on a stopped one.
 
 ---
 
-## Le thème réactif
+## The reactive theme
 
-`Super + W` ouvre le sélecteur de fond d'écran. Une fois l'image choisie,
-[matugen](https://github.com/InioX/matugen) en extrait une palette Material You
-et régénère **onze fichiers**, puis prévient chaque application concernée :
+`Super + W` opens the wallpaper picker. Once an image is chosen,
+[matugen](https://github.com/InioX/matugen) extracts a Material You palette from
+it, regenerates **twelve files**, then notifies every application concerned:
 
-| Cible | Fichier généré | Signal envoyé |
+| Target | Generated file | Signal sent |
 |---|---|---|
 | waybar | `waybar/colors.css` | `pkill -SIGUSR2 waybar` |
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 3 et 4 | `gtk-*/colors.css` | `pkill -SIGUSR1 -f HyprWhale.py` |
+| GTK 3 and 4 | `gtk-*/colors.css` | `pkill -SIGUSR1 -f HyprWhale.py` |
 | vicinae | `themes/matugen.toml` | `vicinae theme set matugen` |
 | rofi, cava, spicetify, vesktop | — | — |
 
-Les applications GTK héritent de la palette parce que `gtk-3.0/gtk.css` et
-`gtk-4.0/gtk.css` importent le `colors.css` que matugen écrit. **Sans ces deux
-fichiers d'une ligne, matugen génère les couleurs mais GTK ne les lit jamais** —
-c'est le piège le plus discret de toute cette configuration.
+GTK applications inherit the palette because `gtk-3.0/gtk.css` and
+`gtk-4.0/gtk.css` import the `colors.css` matugen writes. **Without those two
+one-line files, matugen generates the colours but GTK never reads them** — the
+quietest trap in this whole configuration.
 
 ---
 
-## Raccourcis
+## Shortcuts
 
-### Fenêtres
+### Windows
 
 | | |
 |---|---|
-| `Super + Q` | Fermer |
-| `Super + Maj + Q` | Tuer le processus |
-| `Super + Espace` | Flottant ↔ tuilé |
-| `Super + Maj + F` | Plein écran |
-| `Super + J` | Inverser le sens de découpe |
-| `Super + ← ↑ ↓ →` | Déplacer le focus |
-| `Super + Ctrl + ← ↑ ↓ →` | Déplacer la fenêtre |
-| `Super + Maj + ← ↑ ↓ →` | Redimensionner |
+| `Super + Q` | Close |
+| `Super + Shift + Q` | Kill the process |
+| `Super + Space` | Floating ↔ tiled |
+| `Super + Shift + F` | Fullscreen |
+| `Super + J` | Toggle split direction |
+| `Super + S` | Show / hide the scratchpad |
+| `Super + Alt + S` | Send the window to the scratchpad |
+| `Super + ← ↑ ↓ →` | Move focus |
+| `Super + Ctrl + ← ↑ ↓ →` | Move the window |
+| `Super + Shift + ← ↑ ↓ →` | Resize |
+
+The scratchpad is how you hide a window without closing it — Spotify quits on
+`Super + Q` despite having a tray icon, so `Super + Alt + S` is the way to keep
+music playing.
 
 ### Applications
 
 | | |
 |---|---|
-| `Alt + Espace` | Lanceur Vicinae |
-| `Super + Entrée` | Terminal |
-| `Super + Maj + Entrée` | Terminal flottant |
+| `Alt + Space` | Vicinae launcher |
+| `Super + Enter` | Terminal |
+| `Super + Shift + Enter` | Floating terminal |
 | `Super + E` | Thunar |
-| `Super + Maj + E` | Yazi |
-| `Super + B` | Navigateur |
-| `Super + C` | Pipette à couleur |
-| `Super + Maj + S` | Capture — enregistrée **et** copiée dans le presse-papier |
-| `Super + L` | Verrouillage |
-| `Ctrl + Alt + Suppr` | Quitter Hyprland |
+| `Super + Shift + E` | Yazi |
+| `Super + B` | Browser |
+| `Super + C` | Colour picker |
+| `Super + Shift + S` | Screenshot — saved **and** copied to the clipboard |
+| `Super + L` | Lock |
+| `Ctrl + Alt + Delete` | Quit Hyprland |
 
-### Apparence
+### Appearance
 
 | | |
 |---|---|
-| `Super + W` | Fond d'écran + régénération de la palette |
-| `Super + Ctrl + B` | Style de la waybar |
-| `Super + Alt + B` | Disposition de la waybar |
-| `Super + R` | Redémarrer waybar et swaync |
-| `Super + H` | Masquer la barre |
+| `Super + W` | Wallpaper + palette regeneration |
+| `Super + Ctrl + B` | Waybar style |
+| `Super + Alt + B` | Waybar layout |
+| `Super + R` | Restart waybar and swaync |
+| `Super + H` | Hide the bar |
 
-### Espaces de travail
+### Workspaces
 
-`Super + 1…0` pour naviguer, `Super + Maj + 1…0` pour y envoyer la fenêtre,
-`Super + molette` pour défiler, trois doigts horizontalement sur le pavé tactile.
+`Super + 1…0` to switch, `Super + Shift + 1…0` to send the window there,
+`Super + scroll` to cycle, three fingers horizontally on the touchpad.
 
 ---
 
-## Dépendances
+## Dependencies
 
 ```bash
 sudo pacman -S --needed \
@@ -130,35 +136,40 @@ sudo pacman -S --needed \
 ```
 
 ```bash
-yay -S vicinae-bin
+yay -S vicinae-bin sddm-silent-theme
 ```
 
-Docker demande deux étapes de plus :
+Docker needs two more steps:
 
 ```bash
 sudo systemctl enable --now docker.socket
 sudo usermod -aG docker $USER
 ```
 
-Puis **redémarrer**. Une simple déconnexion ne suffit pas : le gestionnaire
-`user@1000.service` survit à la fermeture de session et conserve les groupes
-qu'il avait au démarrage.
+Then **reboot**. Logging out is not enough: `user@1000.service` survives the end
+of a session and keeps the group set it started with.
 
 ---
 
 ## Installation
 
 ```bash
-git clone <url-du-depot> ~/.rice-repo
+git clone git@github.com:Peralban/Rice-Linux-nux-nux.git ~/.rice-repo
 cd ~/.rice-repo && ./install.sh
 ```
 
-`install.sh` crée un lien symbolique dans `~/.config` pour chaque fichier du
-dépôt, en sauvegardant ce qu'il remplace sous `~/.config-backup-<date>`.
+`install.sh` symlinks every file in the repository into `~/.config`, moving
+whatever it replaces to `~/.config-backup-<date>`.
 
-Les fichiers ne sont **jamais copiés** : `~/.config/hypr/hyprland.conf` est un
-lien vers `~/.rice-repo/config/hypr/hyprland.conf`. Éditer l'un ou l'autre
-revient au même, et `git status` voit les modifications immédiatement.
+Files are **never copied**: `~/.config/hypr/hyprland.conf` is a symlink to
+`~/.rice-repo/config/hypr/hyprland.conf`. Editing either one is the same thing,
+and `git status` sees the change immediately.
+
+The login screen lives outside `$HOME` and needs root, so it has its own script:
+
+```bash
+~/.rice-repo/system/sddm/install-sddm.sh
+```
 
 ---
 
@@ -167,47 +178,62 @@ revient au même, et `git status` voit les modifications immédiatement.
 ```
 config/
 ├── hypr/
-│   ├── hyprland.conf          autostart, moniteur, sources
+│   ├── hyprland.conf          autostart, monitor, sources
 │   ├── configs/               keybinds, windowrules, tags, looknfeel, input, animations
-│   └── scripts/               les quatre applications + capture, wallpaper
+│   └── scripts/               the four applications + screenshot, wallpaper picker
 ├── waybar/
-│   ├── UserModules            modules Docker et curseur de luminosité
-│   ├── Modules                définitions de base (tray, mpris, backlight…)
-│   ├── configs/               dispositions de barre
-│   └── style/                 feuilles de style
-├── matugen/                   chaîne de génération de palette
-├── swaync/themes/             centre de notifications
-└── gtk-3.0, gtk-4.0/          les deux lignes qui branchent GTK sur matugen
+│   ├── UserModules            Docker module and brightness slider
+│   ├── Modules                base definitions (tray, mpris, backlight…)
+│   ├── configs/               bar layouts
+│   └── style/                 stylesheets
+├── matugen/                   palette generation chain
+├── swaync/themes/             notification centre
+└── gtk-3.0, gtk-4.0/          the two lines that wire GTK into matugen
+
+system/
+└── sddm/                      login screen, mirrors the lock screen
 ```
 
 ---
 
 ## Notes
 
-Quelques pièges rencontrés en construisant cette configuration, gardés ici parce
-qu'ils ne sont écrits nulle part ailleurs.
+A few traps hit while building this, kept here because they are written nowhere
+else.
 
-**Hyprland 0.56 a changé la syntaxe des règles de fenêtres.** `class:^(kitty)$`
-devient `match:class ^(kitty)$`, `float` devient `float true`, `ignorealpha`
-devient `ignore_alpha`, et `ignorezero` n'existe plus. Le format `.conf` lui-même
-disparaîtra en 0.57 au profit du Lua.
+**Hyprland 0.56 changed the window rule syntax.** `class:^(kitty)$` becomes
+`match:class ^(kitty)$`, `float` becomes `float true`, `ignorealpha` becomes
+`ignore_alpha`, and `ignorezero` no longer exists. The `.conf` format itself
+disappears in 0.57 in favour of Lua.
 
-**Le paquet `swww` a été renommé `awww`.** Les configurations qui appellent
-encore `swww-daemon` échouent en silence.
+**The `swww` package was renamed `awww`.** Configurations still calling
+`swww-daemon` fail silently.
 
-**matugen 4.x** refuse de choisir entre plusieurs couleurs candidates sans
-terminal interactif : `--prefer saturation` est obligatoire depuis un raccourci.
-Il a aussi abandonné `arguments = [...]` dans `[config.wallpaper]` au profit
-d'une commande unique contenant `{{ image }}`.
+**matugen 4.x** refuses to pick between candidate source colours without an
+interactive terminal: `--prefer saturation` is mandatory from a keybinding. It
+also dropped `arguments = [...]` in `[config.wallpaper]` in favour of a single
+command containing `{{ image }}`.
 
-**Hyprland agrandit les fenêtres flottantes autour de leur centre.** Un popup qui
-grandit remonte donc hors de l'écran. HyprWhale corrige en réancrant son coin
-haut-gauche à chaque image, via la socket IPC (0,16 ms) plutôt que `hyprctl`
+**Hyprland grows floating windows around their centre.** A popup that expands
+therefore climbs off the top of the screen. HyprWhale re-anchors its top-left
+corner on every frame, through the IPC socket (0.16 ms) rather than `hyprctl`
 (10 ms).
 
-**GTK agrandit une fenêtre mappée mais ne la rétrécit jamais.**
-`set_default_size` n'a aucun effet après l'affichage ; il faut demander la
-retaille au compositeur avec la hauteur que `measure()` renvoie.
+**GTK grows a mapped window but never shrinks it.** `set_default_size` has no
+effect once the window is shown; you have to ask the compositor to resize using
+the height `measure()` reports.
 
-**Les glyphes Nerd Font vivent dans la zone privée Unicode.** Une espace
-parasite après un glyphe (`" "`) décale visiblement l'icône dans sa bulle.
+**Nerd Font glyphs live in the Unicode private use area.** A stray space after a
+glyph (`" "`) visibly shifts the icon inside its pill.
+
+**SDDM 0.21 runs a Qt6 greeter.** A theme must declare `QtVersion=6` in its
+`metadata.desktop` or it is ignored in silence and SDDM falls back to a plain
+white box. The three stock themes (elarun, maldives, maya) are all Qt5 and never
+load.
+
+**The `sddm` user cannot read `$HOME`** when it is `drwx------`. The login
+screen wallpaper has to be copied into the theme directory, not symlinked.
+
+**zsh-autocomplete must be sourced before oh-my-zsh.** oh-my-zsh runs `compinit`
+before sourcing plugins, so the plugin's `Completions/` directory reaches
+`fpath` after the scan and its functions are never registered.
