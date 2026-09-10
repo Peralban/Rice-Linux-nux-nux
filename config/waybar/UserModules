@@ -1,0 +1,32 @@
+/* Modules personnels — ce fichier est deja dans la liste "include" de waybar */
+
+{
+
+"custom/docker": {
+	"exec": "$HOME/.config/hypr/scripts/WaybarDocker.py",
+	"return-type": "json",
+	"interval": 5,
+	"tooltip": true,
+	"on-click": "$HOME/.config/hypr/scripts/HyprWhale.py",
+},
+
+"backlight/slider": {
+	"min": 5,
+	"max": 100,
+	"orientation": "horizontal",
+},
+
+"group/brightness": {
+	"orientation": "inherit",
+	"drawer": {
+		"transition-duration": 400,
+		"children-class": "backlight-slider",
+		"transition-left-to-right": false
+	},
+	"modules": [
+		"backlight",
+		"backlight/slider",
+	]
+},
+
+}
