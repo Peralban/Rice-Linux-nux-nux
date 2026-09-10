@@ -63,6 +63,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("swaync")
     hl.exec_cmd("systemctl --user start hyprpolkitagent")
     hl.exec_cmd("hypridle")
+    hl.exec_cmd(scripts .. "/HyprNotch.py")
 end)
 
 --------------------------------------------------------------------------
@@ -227,6 +228,7 @@ hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, 
 hl.layer_rule({ match = { namespace = "waybar" }, blur = true, ignore_alpha = 0.5 })
 hl.layer_rule({ match = { tag = "notif*" }, ignore_alpha = 0.5 })
 hl.layer_rule({ match = { namespace = "logout_dialog" }, blur = true })
+hl.layer_rule({ match = { namespace = "hyprnotch" }, blur = true, ignore_alpha = 0.2, xray = false })
 hl.layer_rule({ match = { namespace = "swaync-control-center" }, blur = true, ignore_alpha = 0.5, xray = false })
 hl.layer_rule({ match = { namespace = "swaync-notification-window" }, blur = true, ignore_alpha = 0.5, xray = false })
 
@@ -270,6 +272,8 @@ hl.bind(mod .. " + H", hl.dsp.exec_cmd("pkill -SIGUSR1 waybar"))
 -- config et aide
 hl.bind(mod .. " + slash", hl.dsp.exec_cmd(scripts .. "/CheatSheet.sh"))
 hl.bind(mod .. " + SHIFT + slash", hl.dsp.exec_cmd(scripts .. "/HyprKeys.py"))
+hl.bind(mod .. " + N", hl.dsp.exec_cmd(
+    "pkill -SIGUSR2 -f HyprNotch.py || " .. scripts .. "/HyprNotch.py"))
 hl.bind(mod .. " + SHIFT + K", hl.dsp.exec_cmd(scripts .. "/HyprSettings.py"))
 hl.bind(mod .. " + K", hl.dsp.exec_cmd("[float; size 1100 750] kitty nano " ..
     os.getenv("HOME") .. "/.config/hypr/configs/keybinds.conf"))
