@@ -179,6 +179,7 @@ The login screen lives outside `$HOME` and needs root, so it has its own script:
 config/
 ├── hypr/
 │   ├── hyprland.conf          autostart, monitor, sources
+│   ├── hyprland.lua           the 0.57 port — validated, see Notes
 │   ├── configs/               keybinds, windowrules, tags, looknfeel, input, animations
 │   └── scripts/               the four applications + screenshot, wallpaper picker
 ├── waybar/
@@ -188,6 +189,7 @@ config/
 │   └── style/                 stylesheets
 ├── matugen/                   palette generation chain
 ├── swaync/themes/             notification centre
+├── vicinae/                   launcher settings (theme, compact mode, telemetry)
 └── gtk-3.0, gtk-4.0/          the two lines that wire GTK into matugen
 
 system/
@@ -237,3 +239,15 @@ screen wallpaper has to be copied into the theme directory, not symlinked.
 **zsh-autocomplete must be sourced before oh-my-zsh.** oh-my-zsh runs `compinit`
 before sourcing plugins, so the plugin's `Completions/` directory reaches
 `fpath` after the scan and its functions are never registered.
+
+**Vicinae's compact mode does nothing while something is showing at root.** An
+unread "What's New" item keeps the launcher expanded, and the telemetry notice
+only stops counting as one when `telemetry.system_info` is set to `false`. The
+file-indexer toast does the same for the first few seconds after a server
+restart. The window never changes size either way — the layer surface stays
+770x480 and only the drawn content collapses — so `hyprctl layers` cannot tell
+you whether compact mode is on. Take a screenshot.
+
+**Vicinae writes its config in place, following symlinks**, so `settings.json`
+can live in the repository like everything else. Changing a setting in its GUI
+edits the repository file directly.
