@@ -2,7 +2,7 @@
 
 A Hyprland setup on Arch Linux, built on top of the
 [JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) dotfiles and extended with
-four custom GTK4 applications.
+five custom GTK4 applications.
 
 One rule governs the whole repository: **no colour is ever hardcoded.** The
 wallpaper decides the palette, and everything else follows automatically — bar,
@@ -20,6 +20,7 @@ switcher, and themed from the system palette.
 | **HyprSettings** | `Super + Shift + K` | Settings panel: spacing, decoration, blur, bar, mouse and keyboard |
 | **HyprKeys** | `Super + Shift + /` | Graphical keybinding editor — captures the key combination as you press it |
 | **HyprWhale** | click the whale | Docker menu: containers, start/stop, terminal, logs |
+| **HyprNotch** | `Super + N`, or hover | Dynamic notch: media, calendar, system, notifications |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
 
 ### HyprSettings
@@ -34,6 +35,19 @@ changing only the value concerned.
 Reads and rewrites `keybinds.conf` while preserving comments, ordering and
 formatting. The combination button captures the keys you actually press and
 translates them into Hyprland syntax (`$mainMod SHIFT, S`).
+
+### HyprNotch
+
+A notch hanging under the bar, in the spirit of BoringNotch. Compact it shows
+the current track; on hover it expands to a panel — cover art, progress,
+controls, then a right column that switches between calendar, system and
+notifications.
+
+It is a **layer surface**, not a floating window, which is what makes it centre
+itself and expand from the middle for free. Media comes from **MPRIS through
+Playerctl signals**, so it follows whichever player is active — Spotify,
+Firefox, VLC — and nothing is hardcoded. Only the playback position is polled,
+and only while the panel is open.
 
 ### HyprWhale
 
@@ -59,6 +73,7 @@ it, regenerates **twelve files**, then notifies every application concerned:
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
 | GTK 3 and 4 | `gtk-*/colors.css` | `pkill -SIGUSR1 -f HyprWhale.py` |
 | vicinae | `themes/matugen.toml` | `vicinae theme set matugen` |
+| hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | rofi, cava, spicetify, vesktop | — | — |
 
 GTK applications inherit the palette because `gtk-3.0/gtk.css` and
@@ -100,6 +115,7 @@ music playing.
 | `Super + Shift + E` | Yazi |
 | `Super + B` | Browser |
 | `Super + C` | Colour picker |
+| `Super + N` | Open / close the notch |
 | `Super + Shift + S` | Screenshot — saved **and** copied to the clipboard |
 | `Super + L` | Lock |
 | `Ctrl + Alt + Delete` | Quit Hyprland |
@@ -131,7 +147,7 @@ sudo pacman -S --needed \
   brightnessctl hyprpicker playerctl wl-clipboard grim slurp \
   blueman network-manager-applet pavucontrol nwg-displays mission-center \
   docker docker-compose docker-buildx lazydocker \
-  python-gobject gtk4 libadwaita \
+  python-gobject gtk4 libadwaita gtk4-layer-shell \
   ttf-jetbrains-mono-nerd noto-fonts-emoji fastfetch btop
 ```
 
@@ -181,7 +197,8 @@ config/
 │   ├── hyprland.conf          autostart, monitor, sources
 │   ├── hyprland.lua           the 0.57 port — validated, see Notes
 │   ├── configs/               keybinds, windowrules, tags, looknfeel, input, animations
-│   └── scripts/               the four applications + screenshot, wallpaper picker
+│   ├── scripts/               the applications + screenshot, wallpaper picker
+│   └── scripts/hyprnotch/     the notch, split into core / theme / ui / widgets
 ├── waybar/
 │   ├── UserModules            Docker module and brightness slider
 │   ├── Modules                base definitions (tray, mpris, backlight…)
@@ -251,3 +268,23 @@ you whether compact mode is on. Take a screenshot.
 **Vicinae writes its config in place, following symlinks**, so `settings.json`
 can live in the repository like everything else. Changing a setting in its GUI
 edits the repository file directly.
+
+**A GTK4 window grows but never shrinks itself.** Lowering a size request does
+nothing once the window is mapped; only `set_default_size()` with explicit
+values brings a layer surface back down. HyprNotch's whole open/close animation
+rests on that one call.
+
+**`Gdk.Surface.set_input_region()` is overwritten by GTK on Wayland.** The
+obvious notch design — one big transparent surface with a clickable hole — is
+therefore impossible: the region is computed correctly and then ignored, and
+the transparent area keeps swallowing clicks. The surface has to be exactly the
+size of what you can see, which is also what makes hover detection reliable.
+
+**A `Gtk.Stack` is homogeneous by default**, so its minimum size is that of its
+largest page. The compact view was being centred inside the expanded view's
+224 px and drawn outside the 30 px window — visible as an empty pill.
+`hhomogeneous=False, vhomogeneous=False` is the fix.
+
+**gtk4-layer-shell must be loaded before libwayland-client.** From Python it
+never is, so the launcher re-executes itself once with `LD_PRELOAD` set;
+without it the window silently falls back to a normal toplevel.
