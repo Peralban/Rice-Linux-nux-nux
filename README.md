@@ -20,7 +20,7 @@ switcher, and themed from the system palette.
 | **HyprSettings** | `Super + Shift + K` | Settings panel: spacing, decoration, blur, bar, mouse and keyboard |
 | **HyprKeys** | `Super + Shift + /` | Graphical keybinding editor — captures the key combination as you press it |
 | **HyprWhale** | click the whale | Docker menu: containers, start/stop, terminal, logs |
-| **HyprNotch** | `Super + N`, or hover | Dynamic notch: media, calendar, system, notifications |
+| **HyprNotch** | `Super + N`, or hover | Dynamic notch: media, calendar, system, file shelf |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
 
 ### HyprSettings
@@ -38,10 +38,18 @@ translates them into Hyprland syntax (`$mainMod SHIFT, S`).
 
 ### HyprNotch
 
-A notch hanging under the bar, in the spirit of BoringNotch. Compact it shows
-the current track; on hover it expands to a panel — cover art, progress,
-controls, then a right column that switches between calendar, system and
-notifications.
+A notch living **inside the bar**, in the spirit of BoringNotch. It takes the
+place waybar's `mpris` module used to occupy: compact it shows the current
+track, on hover it expands downward into a panel — cover art, progress,
+controls, then a right column that switches between calendar, system stats and
+a file shelf.
+
+With nothing playing it draws nothing at all, but the surface stays there, so
+hovering the middle of the bar still opens it.
+
+The file shelf is a drop target. Files dropped on it are never copied or moved:
+it keeps paths, and each row is itself a drag source, so you pick them back up
+wherever you need them.
 
 It is a **layer surface**, not a floating window, which is what makes it centre
 itself and expand from the middle for free. Media comes from **MPRIS through
@@ -288,3 +296,15 @@ largest page. The compact view was being centred inside the expanded view's
 **gtk4-layer-shell must be loaded before libwayland-client.** From Python it
 never is, so the launcher re-executes itself once with `LD_PRELOAD` set;
 without it the window silently falls back to a normal toplevel.
+
+**A fully transparent GTK window never commits a frame.** With nothing playing,
+the notch's shell draws nothing — and the layer surface stayed frozen at GTK's
+200x200 fallback, an invisible block in the middle of the bar. GTK's own idea of
+the window was already correct (230x22); it simply never told the compositor.
+One per cent of background alpha is enough to force the frame, and measured
+against a bare bar the difference is 1/255.
+
+**The bar's centre is deliberately empty.** `modules-center` holds nothing:
+HyprNotch sits there as a layer surface with `exclusive_zone = -1`, which is
+what lets it ignore waybar's own exclusive zone and share the same strip. The
+clock's hover calendar is off for the same reason — the notch has one.

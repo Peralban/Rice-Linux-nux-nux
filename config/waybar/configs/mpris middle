@@ -32,8 +32,8 @@
         "hyprland/workspaces#alpha",
 	],
 
+// Centre laissé libre : HyprNotch s'y pose en surface layer-shell.
 "modules-center": [
-	"mpris",
 	],
 
 "modules-right": [

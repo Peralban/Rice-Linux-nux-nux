@@ -19,7 +19,6 @@ from .theme.matugen import Theme
 from .ui.notch import Notch
 
 APP_ID = "dev.local.HyprNotch"
-CLOCK_MS = 20_000
 
 
 class App(Adw.Application):
@@ -43,7 +42,6 @@ class App(Adw.Application):
         self.notch.refresh()
         self.hold()
 
-        GLib.timeout_add(CLOCK_MS, self._on_clock)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self._on_sigusr1)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2, self._on_sigusr2)
 
@@ -55,12 +53,6 @@ class App(Adw.Application):
     def _on_theme(self):
         if self.notch:
             self.notch.reload_theme()
-
-    def _on_clock(self):
-        # L'horloge du mode compact ne bouge que quand rien ne joue.
-        if self.notch and not self.media.active:
-            self.notch._refresh_compact()
-        return True
 
     def _on_sigusr1(self):
         if self.theme:
