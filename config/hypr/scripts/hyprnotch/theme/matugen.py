@@ -20,7 +20,11 @@ from . import waybar  # noqa: E402
 DEFINE = re.compile(r"@define-color\s+([a-z0-9_]+)\s+([^;]+);")
 
 # Ramène les logos de lecteur à la hauteur des icônes de la waybar.
-GLYPH_RATIO = 0.78
+GLYPH_RATIO = 0.95
+
+# Écart mesuré entre la taille annoncée par la waybar et celle qu'elle
+# dessine réellement : hauteur de capitale comparée au pixel sur la barre.
+BAR_SCALE = 0.782
 
 # Repli minimal si matugen n'a jamais tourné : gris neutres, jamais une
 # couleur d'accent inventée.
@@ -57,7 +61,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-shell.nk-ghost {{
   /* Pas tout à fait transparent : une coque totalement vide ne produit
      aucune image, et la surface layer-shell reste alors figée à la taille
-     de repli de GTK. 2 % suffisent à forcer le rendu sans rien montrer. */
+     de repli de GTK. 1 % suffit à forcer le rendu sans rien montrer. */
   background: alpha(@background, 0.01);
   border-color: transparent;
 }}
@@ -70,13 +74,16 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root .nk-pill label {{
   font-family: {bar_font};
   font-weight: {bar_weight};
-  font-size: {bar_size}px;
+  /* Le pourcentage, pas une taille en pixels : il se résout sur la police
+     GTK par défaut, exactement la base sur laquelle la waybar applique le
+     sien. Recalculer en pixels donnait un texte un tiers trop grand. */
+  font-size: {bar_size};
   color: @secondary;
 }}
 .nk-root .nk-pill .nk-compact-title {{ font-style: italic; }}
 /* Les logos de lecteur remplissent bien plus leur cadratin que les icônes
    de la barre : à taille de police égale ils sortaient de 3 px. */
-.nk-root .nk-pill .nk-glyph {{ font-size: {glyph_size}px; }}
+.nk-root .nk-pill .nk-glyph {{ font-size: {glyph_size}; }}
 .nk-clock {{ font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px; }}
 
 /* --- typographie du panneau --- */
@@ -207,14 +214,20 @@ def build_css(palette, radius, opacity, bar=None):
         percent = float(bar["font_size"].rstrip("%")) / 100.0
     except (KeyError, ValueError):
         percent = 1.0
+    # La waybar pose son pourcentage sur le sélecteur universel, donc il se
+    # réapplique à chaque niveau de sa hiérarchie : le texte rendu est bien
+    # plus petit que le pourcentage annoncé. Reprendre le pourcentage tel
+    # quel donnait une pastille d'un tiers trop grande. BAR_SCALE est le
+    # facteur mesuré entre les deux rendus, pas une valeur théorique.
+    effective = percent * BAR_SCALE
     head = "".join(f"@define-color {k} {v};\n" for k, v in palette.items())
     body = STYLE.format(
         radius=bar.get("radius", radius), opacity=opacity,
         pad_y=bar.get("pad_y", 3), pad_x=bar.get("pad_x", 10),
         bar_font=bar.get("font_family", "monospace"),
         bar_weight=bar.get("font_weight", "700"),
-        bar_size=round(gtk_font_px() * percent, 2),
-        glyph_size=round(gtk_font_px() * percent * GLYPH_RATIO, 2))
+        bar_size=f"{effective * 100:.4g}%",
+        glyph_size=f"{effective * 100 * GLYPH_RATIO:.4g}%")
     return (head + body).encode()
 
 

@@ -342,3 +342,10 @@ of its em box than the bar's own icons: at the same font size it rendered 12 px
 tall against their 9.5. The pill scales its glyph to 78 % so the two match, and
 takes `@secondary` — the colour waybar gives every module — instead of the
 accent.
+
+**waybar's `font-size: 94%` is not 94%.** It sits on the universal selector, so
+it re-applies at every level of waybar's widget tree and the text it actually
+draws is far smaller than the figure suggests. Reproducing the percentage
+literally gave a pill a third too large — capital letters 10.5 px against the
+bar's 8.0. HyprNotch scales the percentage by a factor measured between the two
+renders rather than trusting the number.
