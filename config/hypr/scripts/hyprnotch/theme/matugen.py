@@ -19,6 +19,9 @@ from . import waybar  # noqa: E402
 
 DEFINE = re.compile(r"@define-color\s+([a-z0-9_]+)\s+([^;]+);")
 
+# Ramène les logos de lecteur à la hauteur des icônes de la waybar.
+GLYPH_RATIO = 0.78
+
 # Repli minimal si matugen n'a jamais tourné : gris neutres, jamais une
 # couleur d'accent inventée.
 FALLBACK = {
@@ -68,9 +71,12 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   font-family: {bar_font};
   font-weight: {bar_weight};
   font-size: {bar_size}px;
+  color: @secondary;
 }}
 .nk-root .nk-pill .nk-compact-title {{ font-style: italic; }}
-.nk-root .nk-pill .nk-glyph {{ color: @primary; }}
+/* Les logos de lecteur remplissent bien plus leur cadratin que les icônes
+   de la barre : à taille de police égale ils sortaient de 3 px. */
+.nk-root .nk-pill .nk-glyph {{ font-size: {glyph_size}px; }}
 .nk-clock {{ font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px; }}
 
 /* --- typographie du panneau --- */
@@ -207,7 +213,8 @@ def build_css(palette, radius, opacity, bar=None):
         pad_y=bar.get("pad_y", 3), pad_x=bar.get("pad_x", 10),
         bar_font=bar.get("font_family", "monospace"),
         bar_weight=bar.get("font_weight", "700"),
-        bar_size=round(gtk_font_px() * percent, 2))
+        bar_size=round(gtk_font_px() * percent, 2),
+        glyph_size=round(gtk_font_px() * percent * GLYPH_RATIO, 2))
     return (head + body).encode()
 
 
