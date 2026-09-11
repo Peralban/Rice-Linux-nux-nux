@@ -15,7 +15,8 @@ DEFAULTS = {
     "notch": {
         "monitor": "primary",       # "primary" | nom du connecteur, ex. "eDP-1"
         "layer": "top",             # "top" | "overlay"
-        "margin_top": 0,            # au-delà de la zone exclusive de la waybar
+        "margin_top": 2,            # depuis le bord haut de l'écran
+        "in_bar": True,             # ignorer la zone exclusive : le notch se pose DANS la barre
         "hover_to_open": True,
         "default_page": "calendar",   # calendar | system | notifications
         "close_delay_ms": 180,      # anti-clignotement quand la souris sort
@@ -24,14 +25,14 @@ DEFAULTS = {
         "radius": 18,
         "opacity": 0.97,
         "animation_ms": 260,
-        "compact": [230, 30],
+        "compact": [230, 22],
         "expanded": [660, 224],
     },
     "widgets": {
         "media": True,
         "calendar": True,
         "system": True,
-        "notifications": True,
+        "files": True,
     },
     "theme": {
         # Palette Material You produite par matugen. Une seule source de

@@ -13,10 +13,8 @@ from ..integrations.sysinfo import Sampler
 TICK_MS = 2000
 
 STRINGS = {
-    "fr": {"cpu": "CPU", "ram": "RAM", "gpu": "GPU", "temp": "TEMP",
-           "battery": "BATTERIE", "net": "RÉSEAU", "on": "Connecté", "off": "Hors ligne"},
-    "en": {"cpu": "CPU", "ram": "RAM", "gpu": "GPU", "temp": "TEMP",
-           "battery": "BATTERY", "net": "NETWORK", "on": "Connected", "off": "Offline"},
+    "fr": {"cpu": "CPU", "ram": "RAM", "gpu": "GPU", "temp": "TEMP"},
+    "en": {"cpu": "CPU", "ram": "RAM", "gpu": "GPU", "temp": "TEMP"},
 }
 
 
@@ -44,7 +42,8 @@ class Gauge(Gtk.Box):
 
 class SystemWidget(Gtk.Box):
     def __init__(self, lang="fr"):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=9,
+                         valign=Gtk.Align.CENTER)
         self.s = STRINGS.get(lang, STRINGS["fr"])
         self.sampler = Sampler()
         self.tick = None
@@ -55,18 +54,9 @@ class SystemWidget(Gtk.Box):
         for gauge in (self.cpu, self.ram, self.gpu):
             self.append(gauge)
 
-        footer = Gtk.Box(spacing=10)
-        self.temp = Gtk.Label(xalign=0, hexpand=True)
+        self.temp = Gtk.Label(halign=Gtk.Align.CENTER)
         self.temp.add_css_class("nk-meta")
-        self.battery = Gtk.Label(xalign=1)
-        self.battery.add_css_class("nk-meta")
-        footer.append(self.temp)
-        footer.append(self.battery)
-        self.append(footer)
-
-        self.net = Gtk.Label(xalign=0)
-        self.net.add_css_class("nk-meta")
-        self.append(self.net)
+        self.append(self.temp)
 
     def set_live(self, live):
         if live and self.tick is None:
@@ -98,14 +88,3 @@ class SystemWidget(Gtk.Box):
 
         temperature = self.sampler.temperature()
         self.temp.set_text(f"{self.s['temp']}  {temperature}°C" if temperature >= 0 else "")
-
-        battery = self.sampler.battery()
-        if battery:
-            mark = " ⚡" if battery["status"] == "Charging" else ""
-            self.battery.set_text(f"{self.s['battery']}  {battery['percent']}%{mark}")
-        else:
-            self.battery.set_text("")
-
-        network = self.sampler.network()
-        state = self.s["on"] if network["up"] else self.s["off"]
-        self.net.set_text(f"{self.s['net']}  {network['name']} · {state}")

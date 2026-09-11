@@ -30,6 +30,9 @@ FALLBACK = {
 
 STYLE = """
 window, window.background {{ background: transparent; }}
+/* Le thème pose un fond opaque sur scrolledwindow et viewport ; il se
+   voyait au travers de la coque au repos. */
+scrolledwindow, viewport, stack {{ background: transparent; }}
 
 .nk-root, .nk-root label, .nk-root button {{
   font-family: "JetBrainsMono Nerd Font Propo", "JetBrains Mono", monospace;
@@ -42,6 +45,16 @@ window, window.background {{ background: transparent; }}
   background: alpha(@background, {opacity});
   border: 1px solid alpha(@outline, 0.22);
   border-radius: {radius}px;
+}}
+
+/* Au repos, sans lecture en cours : la coque ne dessine plus rien, mais la
+   surface reste là — on peut toujours la survoler pour ouvrir le panneau. */
+.nk-shell.nk-ghost {{
+  /* Pas tout à fait transparent : une coque totalement vide ne produit
+     aucune image, et la surface layer-shell reste alors figée à la taille
+     de repli de GTK. 2 % suffisent à forcer le rendu sans rien montrer. */
+  background: alpha(@background, 0.01);
+  border-color: transparent;
 }}
 
 .nk-pad {{ padding: 0 12px; }}
@@ -134,6 +147,20 @@ window, window.background {{ background: transparent; }}
 .nk-stat-val {{ font-size: 11px; font-weight: 700; }}
 .nk-gauge trough {{ min-height: 3px; border-radius: 999px; background: alpha(@on_surface, 0.14); }}
 .nk-gauge progress {{ min-height: 3px; border-radius: 999px; background: @primary; }}
+
+/* --- étagère à fichiers --- */
+.nk-drop {{
+  border: 1px dashed alpha(@outline, 0.45);
+  border-radius: 12px;
+  padding: 14px 10px;
+}}
+.nk-file {{
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: alpha(@on_surface, 0.06);
+}}
+.nk-file:hover {{ background: alpha(@primary, 0.16); }}
+.nk-file-name {{ font-size: 11px; }}
 
 .nk-sep {{ background: alpha(@outline, 0.18); min-width: 1px; min-height: 1px; }}
 """

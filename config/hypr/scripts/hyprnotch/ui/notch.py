@@ -23,14 +23,14 @@ from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from ..widgets.calendar import CalendarWidget
+from ..widgets.files import FilesWidget
 from ..widgets.media import MediaWidget
-from ..widgets.notifications import NotificationsWidget
 from ..widgets.system import SystemWidget
 
 PAGES = (
     ("calendar", "x-office-calendar-symbolic"),
     ("system", "system-run-symbolic"),
-    ("notifications", "preferences-system-notifications-symbolic"),
+    ("files", "folder-symbolic"),
 )
 
 
@@ -55,6 +55,10 @@ class Notch(Gtk.ApplicationWindow):
         self._layer_shell()
         self._controllers()
         self.resize_to(*self.compact_size)
+        # Sans contenu (rien en lecture), aucune mise en page n'est déclenchée
+        # et la surface reste à la taille de repli de GTK, 200x200. On
+        # réaffirme la taille une fois la fenêtre posée.
+        self.connect("map", lambda *_: self.resize_to(*self.compact_size))
 
         target = Adw.CallbackAnimationTarget.new(self._on_frame)
         self.anim = Adw.TimedAnimation.new(
@@ -124,10 +128,10 @@ class Notch(Gtk.ApplicationWindow):
                                     transition_duration=140, vexpand=True)
         self.w_calendar = CalendarWidget(self.lang)
         self.w_system = SystemWidget(self.lang)
-        self.w_notifications = NotificationsWidget(self.lang)
+        self.w_files = FilesWidget(self.lang)
         self.page_stack.add_named(self.w_calendar, "calendar")
         self.page_stack.add_named(self.w_system, "system")
-        self.page_stack.add_named(self.w_notifications, "notifications")
+        self.page_stack.add_named(self.w_files, "files")
 
         self.tab_buttons = {}
         enabled = self.config.get("widgets", default={})
@@ -164,8 +168,11 @@ class Notch(Gtk.ApplicationWindow):
         LS.set_layer(self, layer)
         LS.set_anchor(self, LS.Edge.TOP, True)
         LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
-        LS.set_exclusive_zone(self, 0)
-        LS.set_margin(self, LS.Edge.TOP, self.config.get("notch", "margin_top", default=0))
+        # Zone exclusive à -1 : le notch ignore celle de la waybar et se
+        # pose sur la même bande, à la place du module mpris.
+        LS.set_exclusive_zone(self, -1 if self.config.get(
+            "notch", "in_bar", default=True) else 0)
+        LS.set_margin(self, LS.Edge.TOP, self.config.get("notch", "margin_top", default=2))
 
         wanted = self.config.get("notch", "monitor", default="primary")
         if wanted and wanted != "primary":
@@ -186,9 +193,31 @@ class Notch(Gtk.ApplicationWindow):
         click.connect("released", self._on_click)
         self.add_controller(click)
 
+        drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        drop.connect("enter", self._on_drag_enter)
+        drop.connect("drop", self._on_drop)
+        self.add_controller(drop)
+
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
+
+    def _on_drag_enter(self, _target, _x, _y):
+        self._cancel_close()
+        self.expand()
+        self.show_page("files")
+        return Gdk.DragAction.COPY
+
+    def _on_drop(self, _target, value, _x, _y):
+        try:
+            paths = [f.get_path() for f in value.get_files() if f.get_path()]
+        except AttributeError:
+            return False
+        if not paths:
+            return False
+        self.w_files.add(paths)
+        self.show_page("files")
+        return True
 
     # --- taille et animation --------------------------------------------
     def resize_to(self, width, height):
@@ -208,6 +237,7 @@ class Notch(Gtk.ApplicationWindow):
         if self.open:
             return
         self.open = True
+        self.shell.remove_css_class("nk-ghost")
         self.stack.set_visible_child_name("expanded")
         self._set_live(True)
         self.anim.play()
@@ -217,6 +247,7 @@ class Notch(Gtk.ApplicationWindow):
             return
         self.open = False
         self.stack.set_visible_child_name("compact")
+        self._update_ghost()
         self._set_live(False)
         self.anim.play()
 
@@ -245,9 +276,7 @@ class Notch(Gtk.ApplicationWindow):
             else:
                 button.remove_css_class("nk-on")
         self.w_system.set_live(self.open and name == "system")
-        if name == "notifications":
-            self.w_notifications.refresh()
-        elif name == "calendar":
+        if name == "calendar":
             self.w_calendar.refresh()
 
     def _on_tab_scroll(self, _controller, _dx, dy):
@@ -304,17 +333,27 @@ class Notch(Gtk.ApplicationWindow):
         self._refresh_compact()
 
     def _refresh_compact(self):
-        if self.media.active:
+        """Sans lecture en cours, la pastille ne montre rien et ne dessine
+        rien : il reste une zone invisible, toujours survolable."""
+        active = self.media.active
+        self.pulse.set_visible(active)
+        self.c_right.set_text("")
+        if active:
             track = self.media.track
-            self.pulse.set_visible(True)
             self.pulse.set_opacity(1.0 if self.media.playing else 0.35)
             title = track.title or ""
             self.c_title.set_text(f"{title} · {track.artist}" if track.artist else title)
-            self.c_right.set_text("")
         else:
-            self.pulse.set_visible(False)
-            self.c_title.set_text(GLib.DateTime.new_now_local().format("%H:%M"))
-            self.c_right.set_text("")
+            self.c_title.set_text("")
+        self._update_ghost()
+        if not self.open:
+            self.resize_to(*self.compact_size)
+
+    def _update_ghost(self):
+        if not self.open and not self.media.active:
+            self.shell.add_css_class("nk-ghost")
+        else:
+            self.shell.remove_css_class("nk-ghost")
 
     def reload_theme(self):
         self.refresh()
