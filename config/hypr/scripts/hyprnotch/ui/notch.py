@@ -13,13 +13,15 @@ qu'ils décident de toute l'architecture :
    le notch.
 """
 
+import os
+
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from ..theme import waybar
@@ -30,6 +32,42 @@ from ..widgets.system import SystemWidget
 
 # Glyphes repris tels quels de l'ancien module mpris de la waybar, pour
 # que la pastille reste la même à l'œil.
+DND_LOG = os.path.expanduser("~/.cache/hyprnotch/dnd.log")
+
+
+def dnd_log(message):
+    """Trace des événements de glisser-déposer. Rien d'autre n'écrit ici :
+    le fichier ne grossit qu'en cas de dépôt, et il sert à diagnostiquer
+    ce qu'une application source propose réellement."""
+    try:
+        os.makedirs(os.path.dirname(DND_LOG), exist_ok=True)
+        with open(DND_LOG, "a", encoding="utf-8") as fh:
+            fh.write(message + "\n")
+    except OSError:
+        pass
+
+
+def paths_from_value(value):
+    """Extrait des chemins, quelle que soit la forme reçue."""
+    if isinstance(value, Gdk.FileList):
+        return [f.get_path() for f in value.get_files() if f.get_path()]
+    if isinstance(value, Gio.File):
+        path = value.get_path()
+        return [path] if path else []
+    if isinstance(value, str):
+        out = []
+        for line in value.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            gfile = Gio.File.new_for_uri(line) if "://" in line else Gio.File.new_for_path(line)
+            path = gfile.get_path()
+            if path:
+                out.append(path)
+        return out
+    return []
+
+
 PLAYER_GLYPH = {
     "spotify": "\uf1bc", "firefox": "\uf269", "chromium": "\uf268",
     "mpv": "\U000f0439", "vlc": "\U000f057c", "mopidy": "\uf001",
@@ -207,8 +245,15 @@ class Notch(Gtk.ApplicationWindow):
         motion.connect("leave", self._on_leave)
         self.add_controller(motion)
 
-        drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        # On accepte les trois façons dont une source peut proposer des
+        # fichiers : la liste GTK, un fichier seul, ou du text/uri-list brut.
+        # Se limiter à GdkFileList suffit pour Nautilus mais pas pour tout.
+        drop = Gtk.DropTarget(actions=Gdk.DragAction.COPY)
+        drop.set_gtypes([Gdk.FileList, Gio.File, GObject.TYPE_STRING])
+        drop.set_preload(True)
+        drop.connect("accept", self._on_drag_accept)
         drop.connect("enter", self._on_drag_enter)
+        drop.connect("motion", self._on_drag_motion)
         drop.connect("drop", self._on_drop)
         self.add_controller(drop)
 
@@ -216,20 +261,29 @@ class Notch(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
+    def _on_drag_accept(self, _target, drop):
+        formats = drop.get_formats()
+        dnd_log(f"accept: {formats.to_string()}")
+        return True
+
     def _on_drag_enter(self, _target, _x, _y):
+        dnd_log("enter")
         self._cancel_close()
-        self.expand()
+        self.expand(instant=True)
         self.show_page("files")
         return Gdk.DragAction.COPY
 
+    def _on_drag_motion(self, _target, _x, _y):
+        return Gdk.DragAction.COPY
+
     def _on_drop(self, _target, value, _x, _y):
-        try:
-            paths = [f.get_path() for f in value.get_files() if f.get_path()]
-        except AttributeError:
-            return False
+        dnd_log(f"drop: {type(value)} {value!r:.120}")
+        paths = paths_from_value(value)
+        dnd_log(f"  -> {paths}")
         if not paths:
             return False
         self.w_files.add(paths)
+        self.expand()
         self.show_page("files")
         return True
 
@@ -247,13 +301,19 @@ class Notch(Gtk.ApplicationWindow):
         self.resize_to(int(cw + (ew - cw) * progress),
                        int(ch + (eh - ch) * progress))
 
-    def expand(self):
+    def expand(self, instant=False):
         if self.open:
             return
         self.open = True
         self.shell.remove_css_class("nk-ghost")
         self.stack.set_visible_child_name("expanded")
         self._set_live(True)
+        if instant:
+            # Pendant un glisser-déposer, on ouvre d'un coup : vingt
+            # redimensionnements de la surface sous le curseur pendant que
+            # le compositeur suit le drag, c'est chercher les ennuis.
+            self.resize_to(*self.expanded_size)
+            return
         self.anim.play()
 
     def collapse(self):
