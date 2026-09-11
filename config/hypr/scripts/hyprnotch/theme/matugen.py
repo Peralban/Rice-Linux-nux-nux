@@ -54,6 +54,9 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   background: alpha(@background, {opacity});
   border: 1px solid alpha(@outline, 0.22);
   border-radius: {radius}px;
+  /* La coque s'efface en fondu plutôt que d'un coup quand la pastille
+     redevient invisible. */
+  transition: background-color 140ms ease-out, border-color 140ms ease-out;
 }}
 
 /* Au repos, sans lecture en cours : la coque ne dessine plus rien, mais la
@@ -84,6 +87,10 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 /* Les logos de lecteur remplissent bien plus leur cadratin que les icônes
    de la barre : à taille de police égale ils sortaient de 3 px. */
 .nk-root .nk-pill .nk-glyph {{ font-size: {glyph_size}; }}
+.nk-thumb {{
+  border-radius: 3px;
+  background: alpha(@on_surface, 0.10);
+}}
 .nk-clock {{ font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px; }}
 
 /* --- typographie du panneau --- */

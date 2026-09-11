@@ -49,6 +49,9 @@ Nerd Font player glyph, the same italic `artist title` — and it sizes itself t
 its text instead of holding a fixed width, so it reads as one of the bar's own
 islands.
 
+The pill shows the **album art** when the player publishes one, and falls back
+to the player's Nerd Font glyph when it doesn't.
+
 It also **takes its geometry from the bar**. Font, weight, size, corner radius
 and horizontal padding are read out of `islands.css`; the height and vertical
 position are measured on waybar's own layer surface through the Hyprland
@@ -366,3 +369,9 @@ inside the signal and no drag ever started — dropping files *into* the shelf
 worked, dragging them back out silently did nothing. Build the provider from
 `GObject.Value` instead, and union a `GdkFileList`, a `GFile` and a raw
 `text/uri-list` so any target finds a format it understands.
+
+**Turning the shell transparent before the animation ends looks broken.** When
+the notch collapses back to nothing, dropping the background immediately left
+the panel's text floating over the desktop for the last frames of the shrink.
+The ghost state is applied on the animation's `done` signal instead, and fades
+out over 140 ms.

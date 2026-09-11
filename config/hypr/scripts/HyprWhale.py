@@ -68,6 +68,16 @@ T = {
 # Couleurs d'état : volontairement hors du thème. Un conteneur planté doit
 # rester rouge même si l'utilisateur choisit un accent vert.
 CSS = b"""
+/* Fond translucide, comme le notch : la fenetre elle-meme ne dessine rien,
+   c'est .hw-surface qui pose le fond. Le rayon suit celui de Hyprland
+   (rounding = 10) pour que les deux coins coincident. Le flou global de
+   Hyprland s'applique tout seul des que la fenetre est transparente. */
+window, window.background { background: transparent; }
+.hw-root .hw-surface {
+  background: alpha(@window_bg_color, 0.85);
+  border-radius: 10px;
+}
+
 /* meme police que la waybar : le popup parle la langue du bureau */
 .hw-root, .hw-root button, .hw-root label {
   font-family: "JetBrainsMono Nerd Font Propo", "JetBrains Mono", monospace;
@@ -201,6 +211,7 @@ class Whale(Adw.ApplicationWindow):
 
         # pas de barre de titre : l'en-tete fait partie du contenu
         self.root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.root.add_css_class("hw-surface")
         self.toasts = Adw.ToastOverlay()
         self.toasts.set_child(self.root)
         self.set_content(self.toasts)

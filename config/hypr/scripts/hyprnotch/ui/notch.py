@@ -24,6 +24,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
+from ..integrations import mpris
 from ..theme import waybar
 from ..widgets.calendar import CalendarWidget
 from ..widgets.files import FilesWidget
@@ -120,6 +121,7 @@ class Notch(Gtk.ApplicationWindow):
         self.anim = Adw.TimedAnimation.new(
             self, 0.0, 1.0, config.get("appearance", "animation_ms", default=260), target)
         self.anim.set_easing(Adw.Easing.EASE_OUT_CUBIC)
+        self.anim.connect("done", lambda *_: self._update_ghost())
 
     # --- construction ---------------------------------------------------
     def _build(self):
@@ -154,14 +156,40 @@ class Notch(Gtk.ApplicationWindow):
         box.add_css_class("nk-pill")
         box.set_size_request(-1, self._island_height())
 
+        # Deux entêtes possibles : la pochette quand on l'a, sinon le glyphe
+        # du lecteur. Un seul des deux est visible à la fois.
         self.pulse = Gtk.Label()
         self.pulse.add_css_class("nk-glyph")
+
+        side = self._thumb_size()
+        self.thumb = Gtk.Picture(content_fit=Gtk.ContentFit.COVER)
+        self.thumb.set_size_request(side, side)
+        thumb_clip = Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+            vscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+            propagate_natural_width=False, propagate_natural_height=False,
+            kinetic_scrolling=False)
+        thumb_clip.set_size_request(side, side)
+        thumb_clip.set_child(self.thumb)
+        self.thumb_frame = Gtk.Box(valign=Gtk.Align.CENTER)
+        self.thumb_frame.add_css_class("nk-thumb")
+        self.thumb_frame.set_overflow(Gtk.Overflow.HIDDEN)
+        self.thumb_frame.set_size_request(side, side)
+        self.thumb_frame.append(thumb_clip)
+        self.thumb_frame.set_visible(False)
+        self.thumb_for = None
+
         self.c_title = Gtk.Label(ellipsize=3)
         self.c_title.add_css_class("nk-compact-title")
         box.append(self.pulse)
+        box.append(self.thumb_frame)
         box.append(self.c_title)
         self.compact = box
         return box
+
+    def _thumb_size(self):
+        """Une vignette qui tient dans la bulle, sans la faire grandir."""
+        return max(12, self._island_height() - 8)
 
     def _expanded_view(self):
         box = Gtk.Box(spacing=14)
@@ -322,8 +350,10 @@ class Notch(Gtk.ApplicationWindow):
             return
         self.open = False
         self.stack.set_visible_child_name("compact")
-        self._update_ghost()
         self._set_live(False)
+        # Le passage en fantôme attend la fin de l'animation : sinon la coque
+        # perd son fond pendant que la surface rétrécit encore, et on voit le
+        # texte du panneau flotter sur le bureau une fraction de seconde.
         self.anim.play()
 
     def toggle(self):
@@ -402,7 +432,6 @@ class Notch(Gtk.ApplicationWindow):
         """Sans lecture en cours, la pastille ne montre rien et ne dessine
         rien : il reste une zone invisible, toujours survolable."""
         active = self.media.active
-        self.pulse.set_visible(active)
         self.c_title.set_visible(active)
         if active:
             track = self.media.track
@@ -412,9 +441,13 @@ class Notch(Gtk.ApplicationWindow):
                                 else PAUSED_GLYPH)
             label = " ".join(part for part in (track.artist, track.title) if part)
             self.c_title.set_text(label[:50])
+            self._refresh_thumb(track)
         else:
             self.pulse.set_text("")
             self.c_title.set_text("")
+            self.thumb_for = None
+            self.thumb_frame.set_visible(False)
+        self.pulse.set_visible(active and not self.thumb_frame.get_visible())
         self._update_ghost()
         if not self.open:
             self.resize_to(*self._compact_geometry())
@@ -443,14 +476,42 @@ class Notch(Gtk.ApplicationWindow):
         if not self.media.active:
             return GHOST_WIDTH, height
         text = self.c_title.get_text()
-        glyph = self.pulse.get_text()
         width = 2 * self.bar.get("pad_x", 10) + 2
-        for widget, content in ((self.pulse, glyph), (self.c_title, text)):
-            if content:
-                width += widget.create_pango_layout(content).get_pixel_size()[0]
-        if glyph and text:
-            width += PILL_SPACING
+        if self.thumb_frame.get_visible():
+            lead = self._thumb_size()
+        else:
+            glyph = self.pulse.get_text()
+            lead = self.pulse.create_pango_layout(glyph).get_pixel_size()[0] if glyph else 0
+        width += lead
+        if text:
+            width += self.c_title.create_pango_layout(text).get_pixel_size()[0]
+            if lead:
+                width += PILL_SPACING
         return max(COMPACT_MIN, min(COMPACT_MAX, width)), height
+
+    def _refresh_thumb(self, track):
+        """La pochette remplace le glyphe quand le lecteur en fournit une.
+        Sans pochette — beaucoup de sources n'en publient pas — on garde le
+        logo de l'application."""
+        key = track.art_url or track.trackid
+        if key == self.thumb_for:
+            return
+        self.thumb_for = key
+        if not track.art_url:
+            self.thumb_frame.set_visible(False)
+            self.pulse.set_visible(True)
+            return
+        mpris.fetch_art(track.art_url, self._set_thumb)
+
+    def _set_thumb(self, path):
+        try:
+            self.thumb.set_filename(path)
+        except GLib.Error:
+            return
+        self.thumb_frame.set_visible(True)
+        self.pulse.set_visible(False)
+        if not self.open:
+            self.resize_to(*self._compact_geometry())
 
     def _update_ghost(self):
         if not self.open and not self.media.active:
