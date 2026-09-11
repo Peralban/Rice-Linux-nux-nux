@@ -375,3 +375,8 @@ the notch collapses back to nothing, dropping the background immediately left
 the panel's text floating over the desktop for the last frames of the shrink.
 The ghost state is applied on the animation's `done` signal instead, and fades
 out over 140 ms.
+
+**The shell's 1 px border eats into the pill.** Asking the compact box for the
+full island height left it a pixel taller than the space inside the border, so
+everything in it — the album art most visibly — sat a pixel low. The box asks
+for the height minus the border on both sides.

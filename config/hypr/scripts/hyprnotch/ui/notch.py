@@ -76,6 +76,8 @@ PLAYER_GLYPH = {
 DEFAULT_GLYPH = "\uf01d"
 PAUSED_GLYPH = "\U000f040e"
 
+SHELL_BORDER = 1       # la bordure de .nk-shell, en haut comme en bas
+
 GHOST_WIDTH = 150      # cible de survol quand rien ne joue : invisible, donc large
 COMPACT_MIN = 64       # plancher de la pastille quand elle porte du texte
 COMPACT_MAX = 430
@@ -152,9 +154,9 @@ class Notch(Gtk.ApplicationWindow):
     def _compact_view(self):
         # Contenu centré, et la pastille se taille dessus : c'est ce qui la
         # fait ressembler à l'ancien module, qui n'avait pas de largeur fixe.
-        box = Gtk.Box(spacing=7, valign=Gtk.Align.START, halign=Gtk.Align.CENTER)
+        box = Gtk.Box(spacing=7, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
         box.add_css_class("nk-pill")
-        box.set_size_request(-1, self._island_height())
+        box.set_size_request(-1, self._pill_height())
 
         # Deux entêtes possibles : la pochette quand on l'a, sinon le glyphe
         # du lecteur. Un seul des deux est visible à la fois.
@@ -187,9 +189,17 @@ class Notch(Gtk.ApplicationWindow):
         self.compact = box
         return box
 
+    def _pill_height(self):
+        """Hauteur utile à l'intérieur de la coque.
+
+        La coque a une bordure d'un pixel en haut et en bas : demander la
+        hauteur pleine décalait tout le contenu d'un pixel vers le bas, ce
+        qui se voyait surtout sur la vignette."""
+        return max(1, self._island_height() - 2 * SHELL_BORDER)
+
     def _thumb_size(self):
         """Une vignette qui tient dans la bulle, sans la faire grandir."""
-        return max(12, self._island_height() - 8)
+        return max(12, self._pill_height() - 6)
 
     def _expanded_view(self):
         box = Gtk.Box(spacing=14)
@@ -528,7 +538,7 @@ class Notch(Gtk.ApplicationWindow):
             return False
         self.bar = waybar.read_bar()
         self.island = island
-        self.compact.set_size_request(-1, self._island_height())
+        self.compact.set_size_request(-1, self._pill_height())
         LS.set_margin(self, LS.Edge.TOP, self._island_top())
         if not self.open:
             self.resize_to(*self._compact_geometry())
