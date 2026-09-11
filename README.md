@@ -49,6 +49,12 @@ Nerd Font player glyph, the same italic `artist title` — and it sizes itself t
 its text instead of holding a fixed width, so it reads as one of the bar's own
 islands.
 
+It also **takes its geometry from the bar**. Font, weight, size, corner radius
+and horizontal padding are read out of `islands.css`; the height and vertical
+position are measured on waybar's own layer surface through the Hyprland
+socket. Move a slider in HyprSettings and the notch follows within a second —
+there is no second set of values to keep in sync.
+
 With nothing playing it draws nothing at all, but the surface stays there, so
 hovering the middle of the bar still opens it.
 
@@ -325,3 +331,8 @@ non-propagating container.
 which meant clicking a tab left the notch stuck open with no obvious way back —
 only `Super + N` closes a pinned panel, and hovering away no longer worked.
 Hover opens and closes; `Super + N` is the only thing that pins.
+
+**Measure the bar, don't recompute it.** Deriving the pill's height from the
+font size and padding gave 25 px where waybar's islands were 23. Asking the
+compositor for waybar's layer geometry and subtracting the group padding is
+exact, and it keeps working when any of those settings change.

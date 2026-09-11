@@ -15,6 +15,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
+from . import waybar  # noqa: E402
+
 DEFINE = re.compile(r"@define-color\s+([a-z0-9_]+)\s+([^;]+);")
 
 # Repli minimal si matugen n'a jamais tourné : gris neutres, jamais une
@@ -60,9 +62,15 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-pad {{ padding: 0 12px; }}
 .nk-pad-lg {{ padding: 14px 16px; }}
 
-/* --- état compact --- */
-.nk-compact-title {{ font-size: 11.5px; font-style: italic; }}
-.nk-glyph {{ color: @primary; font-size: 12px; }}
+/* --- état compact : mêmes mesures que les bulles de la waybar --- */
+.nk-root .nk-pill {{ padding: 0 {pad_x}px; }}
+.nk-root .nk-pill label {{
+  font-family: {bar_font};
+  font-weight: {bar_weight};
+  font-size: {bar_size}px;
+}}
+.nk-root .nk-pill .nk-compact-title {{ font-style: italic; }}
+.nk-root .nk-pill .nk-glyph {{ color: @primary; }}
 .nk-clock {{ font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px; }}
 
 /* --- typographie du panneau --- */
@@ -176,9 +184,31 @@ def read_palette(path):
     return colors
 
 
-def build_css(palette, radius, opacity):
+def gtk_font_px():
+    """Taille de police par défaut de GTK, en pixels. La waybar exprime la
+    sienne en pourcentage de cette base ; on refait le même calcul."""
+    try:
+        name = Gtk.Settings.get_default().props.gtk_font_name or ""
+        points = float(name.rsplit(" ", 1)[-1])
+        return points * 4.0 / 3.0
+    except (AttributeError, ValueError, TypeError):
+        return 14.666
+
+
+def build_css(palette, radius, opacity, bar=None):
+    bar = bar or waybar.read_bar()
+    try:
+        percent = float(bar["font_size"].rstrip("%")) / 100.0
+    except (KeyError, ValueError):
+        percent = 1.0
     head = "".join(f"@define-color {k} {v};\n" for k, v in palette.items())
-    return (head + STYLE.format(radius=radius, opacity=opacity)).encode()
+    body = STYLE.format(
+        radius=bar.get("radius", radius), opacity=opacity,
+        pad_y=bar.get("pad_y", 3), pad_x=bar.get("pad_x", 10),
+        bar_font=bar.get("font_family", "monospace"),
+        bar_weight=bar.get("font_weight", "700"),
+        bar_size=round(gtk_font_px() * percent, 2))
+    return (head + body).encode()
 
 
 class Theme:
@@ -190,6 +220,7 @@ class Theme:
         self.radius = config.get("appearance", "radius", default=18)
         self.opacity = config.get("appearance", "opacity", default=0.92)
         self.on_change = on_change
+        self.bar = waybar.read_bar()
         self.palette = {}
         self.provider = Gtk.CssProvider()
         self.monitor = None
@@ -199,8 +230,10 @@ class Theme:
             self._watch()
 
     def apply(self):
+        self.bar = waybar.read_bar()
         self.palette = read_palette(self.path)
-        self.provider.load_from_data(build_css(self.palette, self.radius, self.opacity))
+        self.provider.load_from_data(
+            build_css(self.palette, self.radius, self.opacity, self.bar))
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(), self.provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -211,12 +244,17 @@ class Theme:
             self.on_change()
 
     def _watch(self):
-        try:
-            gfile = Gio.File.new_for_path(self.path)
-            self.monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
-            self.monitor.connect("changed", self._on_file_event)
-        except Exception:
-            self.monitor = None
+        # La palette, plus les fichiers que HyprSettings réécrit : un curseur
+        # bougé dans le panneau de réglages se voit aussi dans le notch.
+        self.monitor = []
+        for path in [self.path, *waybar.watched_paths()]:
+            try:
+                gfile = Gio.File.new_for_path(path)
+                monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
+                monitor.connect("changed", self._on_file_event)
+                self.monitor.append(monitor)
+            except Exception:
+                pass
 
     def _on_file_event(self, _m, _f, _o, event):
         # matugen réécrit le fichier : on attend la fin de l'écriture.

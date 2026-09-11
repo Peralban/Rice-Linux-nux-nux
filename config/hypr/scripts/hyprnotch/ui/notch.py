@@ -22,6 +22,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
+from ..theme import waybar
 from ..widgets.calendar import CalendarWidget
 from ..widgets.files import FilesWidget
 from ..widgets.media import MediaWidget
@@ -38,7 +39,6 @@ PAUSED_GLYPH = "\U000f040e"
 
 COMPACT_MIN = 150
 COMPACT_MAX = 430
-PILL_PADDING = 26      # .nk-pad, 12 px de chaque côté, plus une marge
 PILL_SPACING = 7       # l'espace entre le glyphe et le titre
 
 PAGES = (
@@ -63,6 +63,9 @@ class Notch(Gtk.ApplicationWindow):
         self.open = False
         self.pinned = False
         self.close_source = None
+        self.bar = waybar.read_bar()
+        self.island = waybar.island_metrics()
+        self._realign_source = None
 
         self.add_css_class("nk-root")
         self._build()
@@ -109,8 +112,8 @@ class Notch(Gtk.ApplicationWindow):
         # Contenu centré, et la pastille se taille dessus : c'est ce qui la
         # fait ressembler à l'ancien module, qui n'avait pas de largeur fixe.
         box = Gtk.Box(spacing=7, valign=Gtk.Align.START, halign=Gtk.Align.CENTER)
-        box.add_css_class("nk-pad")
-        box.set_size_request(-1, self.compact_size[1])
+        box.add_css_class("nk-pill")
+        box.set_size_request(-1, self._island_height())
 
         self.pulse = Gtk.Label()
         self.pulse.add_css_class("nk-glyph")
@@ -187,7 +190,7 @@ class Notch(Gtk.ApplicationWindow):
         # pose sur la même bande, à la place du module mpris.
         LS.set_exclusive_zone(self, -1 if self.config.get(
             "notch", "in_bar", default=True) else 0)
-        LS.set_margin(self, LS.Edge.TOP, self.config.get("notch", "margin_top", default=2))
+        LS.set_margin(self, LS.Edge.TOP, self._island_top())
 
         wanted = self.config.get("notch", "monitor", default="primary")
         if wanted and wanted != "primary":
@@ -355,6 +358,18 @@ class Notch(Gtk.ApplicationWindow):
         if not self.open:
             self.resize_to(*self._compact_geometry())
 
+    def _island_top(self):
+        offset = self.config.get("notch", "margin_top", default=0)
+        if self.island:
+            return self.island["top"] + offset
+        return self.bar.get("margin_top", 1) + 1 + offset
+
+    def _island_height(self):
+        """Hauteur d'une bulle de la waybar, mesurée sur la barre elle-même."""
+        if self.island:
+            return self.island["height"]
+        return self.compact_size[1]
+
     def _compact_geometry(self):
         """La pastille épouse son texte, bornée pour ne jamais manger la
         barre ni devenir introuvable au survol.
@@ -362,12 +377,13 @@ class Notch(Gtk.ApplicationWindow):
         On mesure via une mise en page Pango neuve, pas via measure() :
         une étiquette avec ellipsize annonce une largeur naturelle tronquée,
         et la pastille se serait coupée toute seule."""
-        height = self.compact_size[1]
+        _min_h, natural, _a, _b = self.compact.measure(Gtk.Orientation.VERTICAL, -1)
+        height = max(natural, self._island_height(), 1)
         if not self.media.active:
             return COMPACT_MIN, height
         text = self.c_title.get_text()
         glyph = self.pulse.get_text()
-        width = PILL_PADDING
+        width = 2 * self.bar.get("pad_x", 10) + 2
         for widget, content in ((self.pulse, glyph), (self.c_title, text)):
             if content:
                 width += widget.create_pango_layout(content).get_pixel_size()[0]
@@ -381,5 +397,38 @@ class Notch(Gtk.ApplicationWindow):
         else:
             self.shell.remove_css_class("nk-ghost")
 
+    def _align_to_bar(self):
+        """Reprend la hauteur et la position d'une bulle de la waybar."""
+        island = waybar.island_metrics()
+        if island is None:
+            # La barre redémarre : on garde l'alignement courant plutôt que
+            # de retomber sur une valeur par défaut.
+            return False
+        self.bar = waybar.read_bar()
+        self.island = island
+        self.compact.set_size_request(-1, self._island_height())
+        LS.set_margin(self, LS.Edge.TOP, self._island_top())
+        if not self.open:
+            self.resize_to(*self._compact_geometry())
+        return False
+
     def reload_theme(self):
+        """HyprSettings vient peut-être de changer la barre : on relit ses
+        mesures et on se réaligne dessus.
+
+        Le fichier change avant que la waybar ne redémarre, donc au premier
+        passage elle a encore son ancienne taille. On repasse pendant
+        quelques secondes, le temps qu'elle se réaffiche."""
+        self._align_to_bar()
+        self._realign_left = 20
+        if self._realign_source is None:
+            self._realign_source = GLib.timeout_add(400, self._realign_tick)
         self.refresh()
+
+    def _realign_tick(self):
+        self._align_to_bar()
+        self._realign_left -= 1
+        if self._realign_left > 0:
+            return True
+        self._realign_source = None
+        return False
