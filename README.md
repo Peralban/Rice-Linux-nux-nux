@@ -44,6 +44,11 @@ track, on hover it expands downward into a panel — cover art, progress,
 controls, then a right column that switches between calendar, system stats and
 a file shelf.
 
+The compact pill deliberately mirrors the `mpris` module it replaced — the same
+Nerd Font player glyph, the same italic `artist title` — and it sizes itself to
+its text instead of holding a fixed width, so it reads as one of the bar's own
+islands.
+
 With nothing playing it draws nothing at all, but the surface stays there, so
 hovering the middle of the bar still opens it.
 
@@ -308,3 +313,15 @@ against a bare bar the difference is 1/255.
 HyprNotch sits there as a layer surface with `exclusive_zone = -1`, which is
 what lets it ignore waybar's own exclusive zone and share the same strip. The
 clock's hover calendar is off for the same reason — the notch has one.
+
+**An ellipsizing `Gtk.Label` reports a truncated natural width**, so measuring
+the pill through `measure()` made it size to the cut-off text and then cut the
+text to fit. `create_pango_layout()` gives the real extent. A `Gtk.Picture` has
+the opposite problem: its natural size is the texture's, so the album art grew
+or shrank with the length of the track title until it was clipped by a
+non-propagating container.
+
+**Nothing in the panel pins it open.** An earlier version pinned on any click,
+which meant clicking a tab left the notch stuck open with no obvious way back —
+only `Super + N` closes a pinned panel, and hovering away no longer worked.
+Hover opens and closes; `Super + N` is the only thing that pins.

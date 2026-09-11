@@ -61,9 +61,8 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-pad-lg {{ padding: 14px 16px; }}
 
 /* --- état compact --- */
-.nk-compact-title {{ font-size: 11.5px; font-weight: 600; }}
-.nk-compact-sub {{ font-size: 11px; color: @on_surface_variant; }}
-.nk-pulse {{ color: @primary; font-size: 9px; }}
+.nk-compact-title {{ font-size: 11.5px; font-style: italic; }}
+.nk-glyph {{ color: @primary; font-size: 12px; }}
 .nk-clock {{ font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px; }}
 
 /* --- typographie du panneau --- */
