@@ -336,3 +336,9 @@ Hover opens and closes; `Super + N` is the only thing that pins.
 font size and padding gave 25 px where waybar's islands were 23. Asking the
 compositor for waybar's layer geometry and subtracting the group padding is
 exact, and it keeps working when any of those settings change.
+
+**Nerd Font player logos are not icon-sized.** The Spotify glyph fills far more
+of its em box than the bar's own icons: at the same font size it rendered 12 px
+tall against their 9.5. The pill scales its glyph to 78 % so the two match, and
+takes `@secondary` — the colour waybar gives every module — instead of the
+accent.
