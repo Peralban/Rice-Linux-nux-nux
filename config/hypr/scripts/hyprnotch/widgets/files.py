@@ -11,7 +11,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 MAX_ITEMS = 12
 
@@ -25,6 +25,29 @@ STRINGS = {
            "clear": "Clear the shelf", "open": "Open",
            "count": "{n} waiting"},
 }
+
+
+def content_for(gfile):
+    """Propose le fichier sous toutes les formes qu'une cible peut vouloir.
+
+    `Gdk.ContentProvider.new_typed()` n'existe pas dans les liaisons Python :
+    l'appeler levait une exception dans le gestionnaire `prepare`, et aucun
+    glisser ne démarrait jamais. Il faut passer par des GValue.
+    """
+    parts = []
+
+    files = GObject.Value(Gdk.FileList)
+    files.set_boxed(Gdk.FileList.new_from_list([gfile]))
+    parts.append(Gdk.ContentProvider.new_for_value(files))
+
+    single = GObject.Value(Gio.File)
+    single.set_object(gfile)
+    parts.append(Gdk.ContentProvider.new_for_value(single))
+
+    parts.append(Gdk.ContentProvider.new_for_bytes(
+        "text/uri-list", GLib.Bytes.new((gfile.get_uri() + "\r\n").encode())))
+
+    return Gdk.ContentProvider.new_union(parts)
 
 
 class FilesWidget(Gtk.Box):
@@ -115,7 +138,8 @@ class FilesWidget(Gtk.Box):
 
         # ressortir le fichier
         source = Gtk.DragSource(actions=Gdk.DragAction.COPY)
-        source.connect("prepare", lambda *_: Gdk.ContentProvider.new_typed(Gio.File, gfile))
+        source.connect("prepare", lambda *_: content_for(gfile))
+        source.connect("drag-begin", lambda _s, drag: self._set_drag_icon(drag, icon))
         row.add_controller(source)
 
         # ouvrir
@@ -131,6 +155,12 @@ class FilesWidget(Gtk.Box):
             return info.get_icon()
         except GLib.Error:
             return Gio.ThemedIcon.new("text-x-generic-symbolic")
+
+    @staticmethod
+    def _set_drag_icon(drag, icon):
+        paintable = icon.get_paintable()
+        if paintable is not None:
+            Gtk.DragIcon.set_from_paintable(drag, paintable, 8, 8)
 
     @staticmethod
     def _open(gfile):
