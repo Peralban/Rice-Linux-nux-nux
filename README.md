@@ -349,3 +349,13 @@ draws is far smaller than the figure suggests. Reproducing the percentage
 literally gave a pill a third too large — capital letters 10.5 px against the
 bar's 8.0. HyprNotch scales the percentage by a factor measured between the two
 renders rather than trusting the number.
+
+**A drop target for files needs more than `GdkFileList`.** File managers offer
+one, but browsers and Electron apps hand over `text/uri-list` or a bare path as
+text. HyprNotch's target accepts all three and normalises them to paths. It also
+opens the panel in a single resize during a drag rather than animating twenty of
+them under a pointer the compositor is already tracking.
+
+Drag-and-drop events are traced to `~/.cache/hyprnotch/dnd.log` — the file only
+grows when something is dropped, and it records what the source actually
+offered.
