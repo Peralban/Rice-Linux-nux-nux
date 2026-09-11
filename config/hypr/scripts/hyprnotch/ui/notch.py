@@ -75,7 +75,8 @@ PLAYER_GLYPH = {
 DEFAULT_GLYPH = "\uf01d"
 PAUSED_GLYPH = "\U000f040e"
 
-COMPACT_MIN = 150
+GHOST_WIDTH = 150      # cible de survol quand rien ne joue : invisible, donc large
+COMPACT_MIN = 64       # plancher de la pastille quand elle porte du texte
 COMPACT_MAX = 430
 PILL_SPACING = 7       # l'espace entre le glyphe et le titre
 
@@ -440,7 +441,7 @@ class Notch(Gtk.ApplicationWindow):
         _min_h, natural, _a, _b = self.compact.measure(Gtk.Orientation.VERTICAL, -1)
         height = max(natural, self._island_height(), 1)
         if not self.media.active:
-            return COMPACT_MIN, height
+            return GHOST_WIDTH, height
         text = self.c_title.get_text()
         glyph = self.pulse.get_text()
         width = 2 * self.bar.get("pad_x", 10) + 2

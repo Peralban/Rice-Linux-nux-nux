@@ -359,3 +359,10 @@ them under a pointer the compositor is already tracking.
 Drag-and-drop events are traced to `~/.cache/hyprnotch/dnd.log` — the file only
 grows when something is dropped, and it records what the source actually
 offered.
+
+**`Gdk.ContentProvider.new_typed()` does not exist in the Python bindings.** It
+is a C varargs convenience, so calling it from a `prepare` handler raised
+inside the signal and no drag ever started — dropping files *into* the shelf
+worked, dragging them back out silently did nothing. Build the provider from
+`GObject.Value` instead, and union a `GdkFileList`, a `GFile` and a raw
+`text/uri-list` so any target finds a format it understands.
