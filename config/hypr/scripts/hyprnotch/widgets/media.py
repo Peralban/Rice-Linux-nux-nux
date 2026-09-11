@@ -12,7 +12,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from ..integrations import mpris
 
-COVER = 92
+COVER = 108
 TICK_MS = 1000
 
 STRINGS = {
@@ -47,7 +47,17 @@ class MediaWidget(Gtk.Box):
         self.cover_frame.set_overflow(Gtk.Overflow.HIDDEN)
         self.cover = Gtk.Picture(content_fit=Gtk.ContentFit.COVER)
         self.cover.set_size_request(COVER, COVER)
-        self.cover_frame.append(self.cover)
+        # La taille naturelle d'une Picture est celle de la texture : sans
+        # cette coupure de propagation, la pochette grossissait ou rétrécissait
+        # selon la place laissée par le titre.
+        clip = Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+            vscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+            propagate_natural_width=False, propagate_natural_height=False,
+            kinetic_scrolling=False)
+        clip.set_size_request(COVER, COVER)
+        clip.set_child(self.cover)
+        self.cover_frame.append(clip)
 
         overlay = Gtk.Overlay(valign=Gtk.Align.CENTER)
         overlay.set_child(self.cover_frame)

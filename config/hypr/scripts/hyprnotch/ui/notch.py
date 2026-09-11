@@ -27,6 +27,20 @@ from ..widgets.files import FilesWidget
 from ..widgets.media import MediaWidget
 from ..widgets.system import SystemWidget
 
+# Glyphes repris tels quels de l'ancien module mpris de la waybar, pour
+# que la pastille reste la même à l'œil.
+PLAYER_GLYPH = {
+    "spotify": "\uf1bc", "firefox": "\uf269", "chromium": "\uf268",
+    "mpv": "\U000f0439", "vlc": "\U000f057c", "mopidy": "\uf001",
+}
+DEFAULT_GLYPH = "\uf01d"
+PAUSED_GLYPH = "\U000f040e"
+
+COMPACT_MIN = 150
+COMPACT_MAX = 430
+PILL_PADDING = 26      # .nk-pad, 12 px de chaque côté, plus une marge
+PILL_SPACING = 7       # l'espace entre le glyphe et le titre
+
 PAGES = (
     ("calendar", "x-office-calendar-symbolic"),
     ("system", "system-run-symbolic"),
@@ -58,7 +72,7 @@ class Notch(Gtk.ApplicationWindow):
         # Sans contenu (rien en lecture), aucune mise en page n'est déclenchée
         # et la surface reste à la taille de repli de GTK, 200x200. On
         # réaffirme la taille une fois la fenêtre posée.
-        self.connect("map", lambda *_: self.resize_to(*self.compact_size))
+        self.connect("map", lambda *_: self.resize_to(*self._compact_geometry()))
 
         target = Adw.CallbackAnimationTarget.new(self._on_frame)
         self.anim = Adw.TimedAnimation.new(
@@ -92,18 +106,19 @@ class Notch(Gtk.ApplicationWindow):
         self.set_child(self.shell)
 
     def _compact_view(self):
-        box = Gtk.Box(spacing=8, valign=Gtk.Align.START)
+        # Contenu centré, et la pastille se taille dessus : c'est ce qui la
+        # fait ressembler à l'ancien module, qui n'avait pas de largeur fixe.
+        box = Gtk.Box(spacing=7, valign=Gtk.Align.START, halign=Gtk.Align.CENTER)
         box.add_css_class("nk-pad")
-        box.set_size_request(*self.compact_size)
+        box.set_size_request(-1, self.compact_size[1])
 
-        self.pulse = Gtk.Label(label="●")
-        self.pulse.add_css_class("nk-pulse")
-        self.c_title = Gtk.Label(xalign=0, ellipsize=3, hexpand=True)
+        self.pulse = Gtk.Label()
+        self.pulse.add_css_class("nk-glyph")
+        self.c_title = Gtk.Label(ellipsize=3)
         self.c_title.add_css_class("nk-compact-title")
-        self.c_right = Gtk.Label(xalign=1)
-        self.c_right.add_css_class("nk-compact-sub")
-        for widget in (self.pulse, self.c_title, self.c_right):
-            box.append(widget)
+        box.append(self.pulse)
+        box.append(self.c_title)
+        self.compact = box
         return box
 
     def _expanded_view(self):
@@ -189,10 +204,6 @@ class Notch(Gtk.ApplicationWindow):
         motion.connect("leave", self._on_leave)
         self.add_controller(motion)
 
-        click = Gtk.GestureClick()
-        click.connect("released", self._on_click)
-        self.add_controller(click)
-
         drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         drop.connect("enter", self._on_drag_enter)
         drop.connect("drop", self._on_drop)
@@ -228,7 +239,7 @@ class Notch(Gtk.ApplicationWindow):
 
     def _on_frame(self, value):
         progress = value if self.open else 1.0 - value
-        cw, ch = self.compact_size
+        cw, ch = self._compact_geometry()
         ew, eh = self.expanded_size
         self.resize_to(int(cw + (ew - cw) * progress),
                        int(ch + (eh - ch) * progress))
@@ -310,15 +321,6 @@ class Notch(Gtk.ApplicationWindow):
             GLib.source_remove(self.close_source)
             self.close_source = None
 
-    def _on_click(self, gesture, n_press, x, y):
-        # Un clic dans la zone compacte épingle le panneau ouvert.
-        if not self.open:
-            self.toggle()
-            return
-        if not self.pinned:
-            self.pinned = True
-            LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
-
     def _on_key(self, _controller, keyval, _code, _state):
         if keyval == Gdk.KEY_Escape:
             self.pinned = False
@@ -337,17 +339,41 @@ class Notch(Gtk.ApplicationWindow):
         rien : il reste une zone invisible, toujours survolable."""
         active = self.media.active
         self.pulse.set_visible(active)
-        self.c_right.set_text("")
+        self.c_title.set_visible(active)
         if active:
             track = self.media.track
-            self.pulse.set_opacity(1.0 if self.media.playing else 0.35)
-            title = track.title or ""
-            self.c_title.set_text(f"{title} · {track.artist}" if track.artist else title)
+            playing = self.media.playing
+            source = (self.media.source or "").lower()
+            self.pulse.set_text(PLAYER_GLYPH.get(source, DEFAULT_GLYPH) if playing
+                                else PAUSED_GLYPH)
+            label = " ".join(part for part in (track.artist, track.title) if part)
+            self.c_title.set_text(label[:50])
         else:
+            self.pulse.set_text("")
             self.c_title.set_text("")
         self._update_ghost()
         if not self.open:
-            self.resize_to(*self.compact_size)
+            self.resize_to(*self._compact_geometry())
+
+    def _compact_geometry(self):
+        """La pastille épouse son texte, bornée pour ne jamais manger la
+        barre ni devenir introuvable au survol.
+
+        On mesure via une mise en page Pango neuve, pas via measure() :
+        une étiquette avec ellipsize annonce une largeur naturelle tronquée,
+        et la pastille se serait coupée toute seule."""
+        height = self.compact_size[1]
+        if not self.media.active:
+            return COMPACT_MIN, height
+        text = self.c_title.get_text()
+        glyph = self.pulse.get_text()
+        width = PILL_PADDING
+        for widget, content in ((self.pulse, glyph), (self.c_title, text)):
+            if content:
+                width += widget.create_pango_layout(content).get_pixel_size()[0]
+        if glyph and text:
+            width += PILL_SPACING
+        return max(COMPACT_MIN, min(COMPACT_MAX, width)), height
 
     def _update_ghost(self):
         if not self.open and not self.media.active:

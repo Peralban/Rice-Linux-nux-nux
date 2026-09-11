@@ -23,7 +23,7 @@ DEFAULTS = {
     },
     "appearance": {
         "radius": 18,
-        "opacity": 0.97,
+        "opacity": 0.82,
         "animation_ms": 260,
         "compact": [230, 22],
         "expanded": [660, 224],
