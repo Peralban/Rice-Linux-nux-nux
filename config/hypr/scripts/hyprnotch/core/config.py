@@ -15,7 +15,7 @@ DEFAULTS = {
     "notch": {
         "monitor": "primary",       # "primary" | nom du connecteur, ex. "eDP-1"
         "layer": "top",             # "top" | "overlay"
-        "margin_top": 2,            # depuis le bord haut de l'écran
+        "margin_top": 0,            # décalage en plus de celui de la waybar
         "in_bar": True,             # ignorer la zone exclusive : le notch se pose DANS la barre
         "hover_to_open": True,
         "default_page": "calendar",   # calendar | system | notifications
