@@ -30,6 +30,7 @@ from ..widgets.calendar import CalendarWidget
 from ..widgets.files import FilesWidget
 from ..widgets.media import MediaWidget
 from ..widgets.system import SystemWidget
+from ..widgets.airdrop import AirDropWidget
 
 # Glyphes repris tels quels de l'ancien module mpris de la waybar, pour
 # que la pastille reste la même à l'œil.
@@ -87,6 +88,7 @@ PAGES = (
     ("calendar", "x-office-calendar-symbolic"),
     ("system", "system-run-symbolic"),
     ("files", "folder-symbolic"),
+    ("airdrop", "send-to-symbolic"),
 )
 
 
@@ -224,9 +226,11 @@ class Notch(Gtk.ApplicationWindow):
         self.w_calendar = CalendarWidget(self.lang)
         self.w_system = SystemWidget(self.lang)
         self.w_files = FilesWidget(self.lang)
+        self.w_airdrop = AirDropWidget(self.lang, shelf=self.w_files)
         self.page_stack.add_named(self.w_calendar, "calendar")
         self.page_stack.add_named(self.w_system, "system")
         self.page_stack.add_named(self.w_files, "files")
+        self.page_stack.add_named(self.w_airdrop, "airdrop")
 
         self.tab_buttons = {}
         enabled = self.config.get("widgets", default={})
@@ -377,7 +381,9 @@ class Notch(Gtk.ApplicationWindow):
 
     def _set_live(self, live):
         self.w_media.set_live(live)
-        self.w_system.set_live(live and self.page_stack.get_visible_child_name() == "system")
+        page = self.page_stack.get_visible_child_name()
+        self.w_system.set_live(live and page == "system")
+        self.w_airdrop.set_live(live and page == "airdrop")
         if live:
             self.w_calendar.refresh()
 
@@ -391,6 +397,7 @@ class Notch(Gtk.ApplicationWindow):
             else:
                 button.remove_css_class("nk-on")
         self.w_system.set_live(self.open and name == "system")
+        self.w_airdrop.set_live(self.open and name == "airdrop")
         if name == "calendar":
             self.w_calendar.refresh()
 

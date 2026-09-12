@@ -190,6 +190,35 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-file-name {{ font-size: 11px; }}
 
 .nk-sep {{ background: alpha(@outline, 0.18); min-width: 1px; min-height: 1px; }}
+
+/* --- airdrop --- */
+.nk-root button.nk-btn {{
+  min-height: 26px; padding: 3px 12px;
+  border: none; box-shadow: none;
+  border-radius: 999px;
+  background: alpha(@primary, 0.16);
+  color: @primary;
+  font-size: 11px; font-weight: 600;
+}}
+.nk-root button.nk-btn:hover {{ background: alpha(@primary, 0.28); }}
+.nk-root button.nk-btn:disabled {{ background: alpha(@on_surface, 0.06);
+  color: alpha(@on_surface_variant, 0.5); }}
+
+.nk-root switch {{
+  min-width: 40px; min-height: 22px;
+  border: none; box-shadow: none;
+  border-radius: 999px;
+  background: alpha(@on_surface, 0.16);
+}}
+.nk-root switch:checked {{ background: @primary; }}
+.nk-root switch:disabled {{ opacity: 0.35; }}
+.nk-root switch slider {{
+  min-width: 18px; min-height: 18px;
+  border: none; box-shadow: none;
+  border-radius: 999px;
+  background: @surface;
+}}
+.nk-root switch:checked slider {{ background: @on_primary; }}
 """
 
 
