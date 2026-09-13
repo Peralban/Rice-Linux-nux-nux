@@ -1,0 +1,164 @@
+diff --git a/airdrop.sh b/airdrop.sh
+index 123ee65..9a5e73c 100755
+--- a/airdrop.sh
++++ b/airdrop.sh
+@@ -664,7 +664,12 @@ else
+   for try in $(seq "$PING_TRIES"); do
+     [ "$try" -gt 1 ] && echo "  ping6 (attempt $try of $PING_TRIES - retrying, loss was ${LOSS}%):"
+     [ "$try" = "1" ] && echo "  ping6 (5 attempts, 8s):"
+-    PING_OUT=$(timeout 12 ping6 -c 5 -W 2 -I $AWDL "$PEER6" 2>&1)
++    # iputils a fusionne ping6 dans `ping -6` et ne livre plus le binaire
++    # separe. Sans ce repli, timeout sort en "No such file or directory",
++    # AUCUN paquet ne part, et la couche conclut "NO PING REPLIES - real
++    # failure of the TX path" alors qu'elle n'a rien teste du tout.
++    if command -v ping6 >/dev/null 2>&1; then PING6="ping6"; else PING6="ping -6"; fi
++    PING_OUT=$(timeout 12 $PING6 -c 5 -W 2 -I $AWDL "$PEER6" 2>&1)
+     echo "$PING_OUT" | tail -4 | sed "s/^/    /"
+     LOSS=$(echo "$PING_OUT" | grep -oE "[0-9]+% packet loss" | grep -oE "^[0-9]+")
+     LOSS="${LOSS:-100}"
+diff --git a/daemon/airdrop-confirm b/daemon/airdrop-confirm
+index 5a72771..785a6cd 100755
+--- a/daemon/airdrop-confirm
++++ b/daemon/airdrop-confirm
+@@ -31,18 +31,41 @@ TIMEOUT="${AIRDROP_CONFIRM_TIMEOUT:-45}"
+ 
+ log() { printf '[airdrop-confirm] %s\n' "$*" >&2; }
+ 
+-if ! command -v swaynag >/dev/null 2>&1; then
+-  log "swaynag not found - DECLINING (cannot ask, so cannot consent)"
+-  exit 1
+-fi
+-if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${SWAYSOCK:-}" ]; then
++if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${SWAYSOCK:-}" ] \
++   && [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+   log "no Wayland session visible - DECLINING (nobody to ask)"
+   exit 1
+ fi
+ 
+-MSG="AirDrop: accept file from ${SENDER}?"
++MSG="AirDrop : accepter un fichier de ${SENDER} ?"
+ [ -n "$DETAIL" ] && MSG="$MSG"$'\n'"$DETAIL"
+ 
++# Hyprland plutot que Sway. hyprland-dialog joue exactement le role que
++# swaynag joue sur sway - il dessine sa propre surface et bloque jusqu'a la
++# reponse - mais il ECRIT LE BOUTON CHOISI SUR STDOUT, ce qui supprime d'un
++# coup toute la mecanique de fichiers-marqueurs plus bas, et avec elle la
++# course de 2 ms qu'elle existait pour rattraper. `timeout` fournit le delai
++# que l'outil n'a pas, et tout ce qui n'est pas un "Accepter" franc refuse.
++if command -v hyprland-dialog >/dev/null 2>&1; then
++  ANSWER=$(timeout "$TIMEOUT" hyprland-dialog \
++      --title "AirDrop" --apptitle "AirDrop" \
++      --text "$MSG" --buttons "Accepter;Refuser" 2>/dev/null)
++  rc=$?
++  case "$ANSWER" in
++    Accepter) log "accepted by user"; exit 0 ;;
++    Refuser)  log "declined by user"; exit 1 ;;
++    *)
++      if [ "$rc" -eq 124 ]; then log "no answer within ${TIMEOUT}s - declining"
++      else log "no usable answer from hyprland-dialog (rc=$rc) - declining"; fi
++      exit 1 ;;
++  esac
++fi
++
++if ! command -v swaynag >/dev/null 2>&1; then
++  log "neither hyprland-dialog nor swaynag found - DECLINING (cannot ask, so cannot consent)"
++  exit 1
++fi
++
+ # swaynag has no built-in timeout and no exit code that distinguishes the
+ # buttons, so both are built here: a marker file per button, and a poll that
+ # gives up after TIMEOUT. Leaving an unanswered prompt on screen forever would
+diff --git a/daemon/airdrop-helper b/daemon/airdrop-helper
+index 67b65fd..7eb9216 100755
+--- a/daemon/airdrop-helper
++++ b/daemon/airdrop-helper
+@@ -19,12 +19,11 @@
+ # /etc/sudoers.d/zzz-swaylock-fp-restart entry.
+ set -u
+ 
+-PHY="${PHY:-phy0}"
++PHY="${PHY:-}"
+ IFACE="${IFACE:-}"
+ MON=mon0
+ MONA=mon1
+ GO=go0
+-MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
+ GO_HOSTAPD=/usr/local/bin/airdrop-go-hostapd
+ GO_CONF=/run/airdrop-go-hostapd.conf
+ GO_LOG=/run/airdrop-go-hostapd.log
+@@ -56,6 +55,17 @@ if [ -z "$IFACE" ]; then
+   done
+ fi
+ 
++# Le phy qui porte cette interface. Le defaut code en dur etait phy0, ce qui
++# casse des que le driver a ete recharge (la carte revient en phy1) ou sur une
++# machine multi-radio : `iw phy phy0 interface add` sort alors en ENOENT, que
++# le demon rapporte comme "no privilege or go0 setup failed". airdrop.sh le
++# derive deja de l'interface ; on fait pareil ici.
++if [ -z "$PHY" ] && [ -n "$IFACE" ]; then
++  PHY=$(basename "$(readlink -f "/sys/class/net/$IFACE/phy80211")" 2>/dev/null)
++fi
++PHY="${PHY:-phy0}"
++MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
++
+ usage() {
+   cat >&2 <<'EOF'
+ usage: airdrop-helper <verb> [chan]
+@@ -180,7 +190,7 @@ case "${1:-}" in
+ interface=$GO
+ driver=nl80211
+ ssid=airdrop-relay-$$
+-country_code=${REG:-NZ}
++country_code=${REG:-FR}
+ ieee80211d=1
+ hw_mode=$hw
+ channel=$chan
+@@ -326,7 +336,26 @@ EOF
+     # while OWL logged ten switches to 149 and ten back. So we advertise exactly
+     # the peer's slots that sit on our channel and leave the rest empty: true,
+     # and structurally like a real sequence.
+-    strategy="${AIRDROP_OWL_STRATEGY:-intersect}"
++    # Passe a `widen`. `intersect` n'avance QUE des creneaux du pair qui
++    # tombent sur notre canal : quand le telephone reduit brievement sa
++    # fenetre, on recopie la reduction, ce qui le pousse a reduire encore -
++    # l'effondrement 15/16 -> 5/16 -> 2/16 en plein transfert, et la queue
++    # perdue. `widen` garde la sequence du pair et REMPLIT ses creneaux
++    # vides, ce qui casse la boucle par construction, et iOS 26 l'accepte
++    # (§26 ; c'est `pin`, qui remplit les 16, qui est rejete).
++    # La strategie peut aussi venir d'un fichier du home de l'appelant.
++    # `airdropd` invoque ce helper via `sudo -n` SANS -E, donc une variable
++    # d'environnement ne traverse jamais : c'est la seule facon de la changer
++    # sans reinstaller le binaire root a chaque essai. La valeur est validee
++    # contre la liste blanche ci-dessous avant tout usage, donc un fichier
++    # inscriptible par l'utilisateur ne peut que choisir parmi des noms deja
++    # autorises - il ne peut rien injecter.
++    strategy="${AIRDROP_OWL_STRATEGY:-}"
++    if [ -z "$strategy" ] && [ -n "${SUDO_USER:-}" ]; then
++      _sf=$(getent passwd "$SUDO_USER" | cut -d: -f6)/.config/airdrop/strategy
++      [ -r "$_sf" ] && strategy=$(head -c 16 "$_sf" | tr -dc 'a-z')
++    fi
++    strategy="${strategy:-widen}"
+     case "$strategy" in
+       pin|verbatim|fixed|intersect|widen|rotate) ;;
+       *) echo "airdrop-helper: bad strategy $strategy" >&2; exit 1 ;;
+@@ -334,7 +363,19 @@ EOF
+ 
+     pkill -x airdrop-owl 2>/dev/null
+     # stdbuf -oL so the log is readable live rather than in 4 KiB bursts.
+-    setsid stdbuf -oL "$OWL_BIN" -i "$vif" -c "$chan" -N -S "$strategy" -vv \
++    # Largeur de `widen`. Le defaut d'owl est 4, et le pair n'ayant que 4
++    # creneaux actifs cela plafonne l'overlap a 8/16 - mesure exactement ca.
++    # Chaque creneau en plus est une fenetre de plus pour que la QUEUE du
++    # transfert passe, ce qui est precisement ce qui manque. On ne monte pas
++    # a 16 : remplir tous les creneaux revient a `pin`, mesure comme REJETE
++    # par iOS (§25). 8 donne 12/16 en laissant des trous.
++    widen="${AIRDROP_OWL_WIDEN:-8}"
++    case "$widen" in ''|*[!0-9]*) widen=8 ;; esac
++    [ "$widen" -gt 14 ] && widen=14
++    owlopts=""
++    [ "$strategy" = widen ] && owlopts="-W $widen"
++
++    setsid stdbuf -oL "$OWL_BIN" -i "$vif" -c "$chan" -N -S "$strategy" $owlopts -vv \
+       >> /run/airdrop-owl.log 2>&1 &
+     for _ in $(seq 60); do
+       ip link show awdl0 >/dev/null 2>&1 && break

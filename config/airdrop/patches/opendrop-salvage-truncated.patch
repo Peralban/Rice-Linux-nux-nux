@@ -1,0 +1,154 @@
+--- a/opendrop/server.py
++++ b/opendrop/server.py
+@@ -553,9 +553,24 @@
+                         break
+                     payload = f.read(length)
+                     if len(payload) < length:
+-                        raise ValueError(
+-                            f"dvzip block truncated: wanted {length}, got {len(payload)}"
+-                        )
++                        # Un bloc tronque n'est PAS une perte du fichier. Mesure
++                        # sur 17 transferts interrompus : 9 d'entre eux
++                        # contenaient deja le cpio complet et ne perdaient que
++                        # le terminateur du conteneur - le JPEG extrait etait
++                        # identique au sha256 pres. Lever ici jetait donc des
++                        # fichiers entiers. On garde ce qu'on a et on laisse
++                        # l'extraction decider de ce qui est exploitable.
++                        logger.warning(
++                            f"dvzip block truncated (wanted {length}, got "
++                            f"{len(payload)}) - salvaging what arrived")
++                        if stored:
++                            out += payload
++                        else:
++                            try:
++                                out += zlib.decompressobj().decompress(payload)
++                            except zlib.error as exc:
++                                logger.warning(f"  tail block unusable ({exc})")
++                        break
+                     out += payload if stored else zlib.decompress(payload)
+             return bytes(out)
+ 
+@@ -583,24 +598,115 @@
+                 self.send_header("Content-Length", 0)
+                 self.end_headers()
+ 
+-            while True:
+-                buf = reader.read(65536)
+-                if not buf:
++            # Delai d'expiration sur la lecture. `_next_chunk` bloque dans
++            # `readline()` sans limite : quand le telephone cesse d'emettre -
++            # ce qui arrive sur la fin, regulierement, sur ce lien - la boucle
++            # ne se terminait jamais, le `with` ne se refermait pas, et meme
++            # les octets deja recus restaient dans le tampon d'ecriture. La
++            # valeur est large devant la gigue AWDL mesuree (RTT ~400 ms,
++            # rafales espacees de ~450 ms) pour ne pas couper un transfert
++            # simplement lent.
++            stall = float(os.environ.get("AIRDROP_STALL_TIMEOUT", "30"))
++            try:
++                self.connection.settimeout(stall)
++            except OSError:
++                pass
++            try:
++                while True:
++                    buf = reader.read(65536)
++                    if not buf:
++                        break
++                    raw.write(buf)
++            except (socket.timeout, TimeoutError):
++                logger.warning(
++                    f"sender went quiet for {stall:.0f}s after {reader.total} B "
++                    f"- salvaging what arrived")
++            except (ConnectionResetError, ValueError) as exc:
++                logger.warning(f"upload stream broke ({exc}) - salvaging")
++            finally:
++                raw.flush()
++                os.fsync(raw.fileno())
++
++        def odc_members(cpio):
++            """(nom, donnees_completes) pour chaque membre d'un cpio ODC.
++
++            En-tete ODC : 76 octets ASCII a champs fixes, puis le nom
++            (namesize, NUL compris), puis les donnees (filesize), tout en
++            octal. On marche la structure a la main parce que libarchive
++            COMPLETE A ZERO un membre tronque jusqu'a sa taille annoncee :
++            mesure, un JPEG rendu a la bonne taille se terminait par 949 265
++            octets nuls et aucun marqueur de fin. Comparer les tailles ne
++            detecte donc rien du tout - seul le fait que les octets soient
++            reellement presents dans l'archive fait foi.
++            """
++            out, off, n = [], 0, len(cpio)
++            while off + 76 <= n:
++                if cpio[off:off + 6] != b"070707":
+                     break
+-                raw.write(buf)
++                try:
++                    namesize = int(cpio[off + 59:off + 65], 8)
++                    filesize = int(cpio[off + 65:off + 76], 8)
++                except ValueError:
++                    break
++                name_off = off + 76
++                name = cpio[name_off:name_off + namesize].split(b"\0")[0]
++                name = name.decode("utf-8", "replace")
++                data_off = name_off + namesize
++                if name == "TRAILER!!!":
++                    break
++                out.append((name, data_off + filesize <= n))
++                off = data_off + filesize
++            return out
++
++        def verify_extracted(cpio_bytes):
++            """Separe ce qui est arrive entier de ce qui ne l'est pas.
++
++            Les incomplets sont suffixes .partial : livrer en silence une
++            photo a moitie vide qui s'ouvre quand meme serait pire qu'un
++            echec franc.
++            """
++            good, bad = [], []
++            for name, complete in odc_members(cpio_bytes):
++                base = os.path.basename(name)
++                if not base or base == "." or base.startswith("._"):
++                    continue
++                path = os.path.join(os.getcwd(), name)
++                if not os.path.exists(path):
++                    continue
++                if complete:
++                    good.append(base)
++                else:
++                    bad.append(base)
++                    try:
++                        os.replace(path, path + ".partial")
++                    except OSError:
++                        pass
++            return good, bad
+ 
+         try:
+             if raw_path.endswith(".dvzip"):
+-                libarchive.extract_memory(dvzip_to_cpio(raw_path))
++                cpio_bytes = dvzip_to_cpio(raw_path)
++                try:
++                    libarchive.extract_memory(cpio_bytes)
++                except Exception as e:  # noqa: BLE001
++                    # Une archive tronquee leve APRES avoir ecrit les membres
++                    # complets. On ne perd donc pas ce qui est deja sur disque.
++                    logger.warning(f"archive ended early ({e}) - checking what landed")
++                good, bad = verify_extracted(cpio_bytes)
++                if bad:
++                    logger.warning(f"incomplete, kept as .partial: {', '.join(bad)}")
++                if not good:
++                    raise ValueError("no complete file in the transfer")
++                logger.info(f"Extracted into {os.getcwd()}: {', '.join(good)}")
++                os.remove(raw_path)
+             else:
+                 with open(raw_path, "rb") as raw:
+                     extract_stream(raw)
++                logger.info(f"Extracted into {os.getcwd()}")
++                os.remove(raw_path)
+         except Exception as e:  # noqa: BLE001 - any failure here must not lose the bytes
+             logger.warning(f"Could not extract the archive ({e}).")
+             logger.warning(f"The raw transfer is kept at {raw_path}")
+-        else:
+-            logger.info(f"Extracted into {os.getcwd()}")
+-            os.remove(raw_path)
+ 
+         transferred = reader.total / 1024.0 / 1024.0
+         speed = transferred / (time.time() - start)

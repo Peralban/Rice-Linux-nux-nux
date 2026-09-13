@@ -1,0 +1,32 @@
+--- a/opendrop/client.py
++++ b/opendrop/client.py
+@@ -142,6 +142,29 @@
+         if self.callback_remove is not None:
+             self.callback_remove(info)
+ 
++    def update_service(self, zeroconf, service_type, name):
++        """Mandatory since python-zeroconf 0.3x, and not decorative.
++
++        Without it the dispatcher raises AttributeError INSIDE the
++        ServiceBrowser thread, which kills the thread: no discovery arrives
++        afterwards, including the one being waited for. python-zeroconf has
++        warned about this for releases (FutureWarning: "it'll become
++        mandatory") and it is now fatal.
++
++        This is not a rare path. A receiver that re-announces - which is
++        exactly what an iPhone does when its AirDrop state changes, and what
++        `opendrop-mdns-reannounce.patch` makes this side do too - fires an
++        "update" rather than an "add". So the peer you are looking for is
++        precisely the one that took the browse down.
++
++        An update carries the same information as an add; only the event type
++        differs, so it is reported the same way.
++        """
++        info = zeroconf.get_service_info(service_type, name)
++        logger.debug(f"Update service {name}")
++        if self.callback_add is not None:
++            self.callback_add(info)
++
+ class AirDropClient:
+     def __init__(self, config, receiver):
+         self.config = config

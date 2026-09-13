@@ -1,0 +1,12 @@
+# Domaine réglementaire réel de cette machine. Le défaut du projet est NZ,
+# le pays de son auteur, où le canal 149 est légal - il ne l'est pas en
+# France. Avec une station associée à un AP qui annonce FR, le noyau
+# intersecte les deux hints et le ch149 retombe en NO-IR : hostapd
+# n'atteint jamais AP-ENABLED.
+REG="${REG:-FR}"
+
+# Le GO doit donc être construit sur un canal autorisé en FR. Parmi les
+# quatre que le démon accepte (6 36 44 149), seuls 6 et 36/44 le sont, et
+# la station est en 5 GHz : ch36. En auto le démon choisirait 149, parce
+# que la station (ch100) n'est pas elle-même constructible.
+AIRDROP_GO_CHAN="${AIRDROP_GO_CHAN:-36}"
