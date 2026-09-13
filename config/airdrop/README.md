@@ -27,7 +27,23 @@ git apply ~/.rice-repo/config/airdrop/patches/00-local-changes.patch
 sudo install -o root -g root -m 755 daemon/airdrop-helper /usr/local/bin/airdrop-helper
 ```
 
-Puis, dans le venv d'opendrop (lui non plus n'est pas versionné) :
+### Recréer le venv d'opendrop en partant de rien
+
+Il n'est pas versionné, et c'est voulu : les deux correctifs ci-dessous le
+décrivent exactement — `patch -R --dry-run` les ré-applique à l'envers sans
+erreur, donc ils correspondent au code en place et rien ne se perd.
+
+Cette machine n'a pas `pip` au niveau système, seulement `uv` :
+
+```sh
+uv venv --python 3.14 ~/owl/.venv-opendrop
+uv pip install --python ~/owl/.venv-opendrop/bin/python opendrop==0.13.0
+```
+
+La version compte : les correctifs sont écrits contre **0.13.0**, et
+`patch` refusera de s'appliquer sur une autre.
+
+Puis, dans le venv d'opendrop :
 
 ```sh
 cd ~/owl/.venv-opendrop/lib/python3.*/site-packages
