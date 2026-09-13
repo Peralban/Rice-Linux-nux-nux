@@ -12,7 +12,7 @@ versionné ici**. Tout ce dossier existe donc pour une seule raison : un
 
 | | |
 |---|---|
-| Réception | 12/12 fichiers vérifiés valides, photos jusqu'à ~7 Mo |
+| Réception | 8/9 sur la dernière série, jusqu'à 10,3 Mo (`.pptx`, en direct) |
 | Envoi | ne marche pas — l'iPhone ne s'annonce jamais en receveur |
 | Wi-Fi | jamais coupé (mode P2P-GO) |
 
@@ -59,8 +59,14 @@ sudo install -o root -g root -m 755 build/daemon/owl /usr/local/bin/airdrop-owl
   sautés en silence — exactement la panne « le monitor ne capture rien » que
   l'amont documente.
 - Le hook de consentement n'acceptait que `swaynag`, absent sous Hyprland : il
-  refusait donc tous les transferts. Porté sur `hyprland-dialog`, qui écrit le
-  bouton choisi sur stdout et supprime toute la mécanique de fichiers-marqueurs.
+  refusait donc tous les transferts. Porté sur une **notification actionnable**
+  (`notify-send -A`, rendue par swaync) avec repli sur `hyprland-dialog` puis
+  `swaynag`. L'objection amont contre `notify-send` — il rend 0 sans rien
+  montrer quand aucun démon ne tourne, le pire échec possible pour une demande
+  de consentement — est traitée plutôt qu'ignorée : on demande au bus si
+  quelqu'un sert `org.freedesktop.Notifications`, et seul un `accept` franc sur
+  stdout accepte. Expiration, fermeture, clic à côté, démon absent : tout
+  refuse.
 
 **`opendrop-zeroconf-update-service.patch`** — `AirDropBrowser` n'avait pas de
 `update_service`, obligatoire depuis python-zeroconf 0.3x. L'exception était
@@ -91,7 +97,8 @@ hook de consentement : un téléphone qui se taisait là bloquait sans fenêtre 
 confirmation et sans une ligne de journal. C'était exactement la « vidéo
 refusée » vue pendant les essais.
 
-**`owl-overlap-under-widen.patch`** — owl ne mesurait le recouvrement de
+**`owl-overlap-under-widen.patch`** — **à ne pas appliquer pour l'instant**, voir
+la réserve à la fin de cette section. owl ne mesurait le recouvrement de
 canaux que dans la branche `intersect`. La ligne de santé `CHAN` du démon lit
 ces lignes-là : passer en `widen` la rendait donc muette, `overlap=0/16` en
 permanence, alors que les transferts passaient. L'indicateur était éteint par
@@ -101,6 +108,17 @@ ce qui est annoncé : élargir modifie la séquence émise, pas la position de l
 radio, que le chanctx du GO tient sur un canal — donc la réponse est la même
 sous toutes les stratégies). Le compagnon côté démon accepte les deux
 étiquettes, `intersect:` et `overlap:`, il est dans `00-local-changes.patch`.
+
+Réserve, mesurée le 2026-09-13 au soir : avec ce binaire, la réponse à `/Ask`
+mettait 11, 15 puis 19,6 s, contre 2 à 4 s avec le binaire d'origine, et les
+transferts mouraient à 10 ko/s. Le coût direct est pourtant négligeable — 2,3 %
+des lignes du journal, 1,6 ko/s écrits dans un tmpfs. Mais **deux choses ont
+changé en même temps** entre les deux séries : le binaire, et un `wifi-reset`
+suivi d'un redémarrage propre après trois reconstructions successives. On ne
+peut donc pas attribuer l'amélioration à l'un plutôt qu'à l'autre. Le test qui
+tranche : réinstaller ce binaire **sans** refaire de reset, et regarder la
+latence de l'`/Ask`. Tant qu'il n'est pas fait, c'est le binaire d'origine qui
+tourne.
 
 ## Outils
 
@@ -136,6 +154,14 @@ sous toutes les stratégies). Le compagnon côté démon accepte les deux
 - Le débit se dégrade avec le temps sur une même pile : ~50 ko/s en début de
   série, ~8 ko/s une heure plus tard. Au-delà de ~10 Mo le transfert ne tient
   pas dans la fenêtre de dix minutes du réglage *Tout le monde*.
+- Cinq transferts sur neuf s'arrêtent à **99,2 à 99,9 %** de `TotalBytes` : le
+  téléphone envoie tout sauf les deux derniers kilo-octets, puis se tait. Ces
+  transferts-là sont finis, et on passe 30 s dans le délai d'expiration à le
+  découvrir — sur 41, 31, 62 et 61 s mesurées, trente sont du vide. Rendre le
+  délai proportionné à ce qui reste est le prochain gain, et il est gratuit.
+- `wifi-reset` arrache `owl` et `awdl0` sous une pile armée, qui se reconstruit
+  alors en boucle autour d'un `opendrop` orphelin et reste bloquée en `waking`.
+  L'ordre est : interrupteur sur off, `wifi-reset`, interrupteur sur on.
 - `airdrop.sh` laisse un `owl` orphelin quand il est interrompu, et le run
   suivant meurt sur `Could not open device: awdl0`.
 - NetworkManager prend `go0` en charge et lui donne la route par défaut via

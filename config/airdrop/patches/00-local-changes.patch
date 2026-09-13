@@ -17,10 +17,10 @@ index 123ee65..9a5e73c 100755
      LOSS=$(echo "$PING_OUT" | grep -oE "[0-9]+% packet loss" | grep -oE "^[0-9]+")
      LOSS="${LOSS:-100}"
 diff --git a/daemon/airdrop-confirm b/daemon/airdrop-confirm
-index 5a72771..785a6cd 100755
+index 5a72771..c2d4e3c 100755
 --- a/daemon/airdrop-confirm
 +++ b/daemon/airdrop-confirm
-@@ -31,18 +31,41 @@ TIMEOUT="${AIRDROP_CONFIRM_TIMEOUT:-45}"
+@@ -31,18 +31,82 @@ TIMEOUT="${AIRDROP_CONFIRM_TIMEOUT:-45}"
  
  log() { printf '[airdrop-confirm] %s\n' "$*" >&2; }
  
@@ -39,6 +39,47 @@ index 5a72771..785a6cd 100755
 +MSG="AirDrop : accepter un fichier de ${SENDER} ?"
  [ -n "$DETAIL" ] && MSG="$MSG"$'\n'"$DETAIL"
  
++# UNE NOTIFICATION PLUTOT QU'UNE FENETRE, quand il y a vraiment quelqu'un pour
++# la recevoir. hyprland-dialog dessine une boite au milieu de l'ecran qui vole
++# le focus - pour une demande qui arrive sans prevenir, plusieurs fois de suite,
++# c'est brutal. La notification se pose la ou se posent toutes les autres, avec
++# ses deux boutons, et se repond sans quitter ce qu'on faisait.
++#
++# Le commentaire amont plus haut refusait notify-send parce qu'aucun demon de
++# notification ne tournait sur SA machine : l'appel aurait rendu 0 sans rien
++# montrer a personne, ce qui est le pire echec possible pour une demande de
++# consentement. L'objection est juste, alors on la traite plutot que de
++# l'ignorer - on demande au bus si quelqu'un sert bien org.freedesktop.
++# Notifications, et sinon on tombe sur la fenetre. Et comme -A n'ecrit sur
++# stdout que le nom de l'action choisie, seul un "accept" franc accepte :
++# expiration, fermeture, clic a cote, demon absent, tout cela refuse.
++if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
++   && command -v notify-send >/dev/null 2>&1 \
++   && command -v gdbus >/dev/null 2>&1 \
++   && [ "$(gdbus call --session --dest org.freedesktop.DBus \
++             --object-path /org/freedesktop/DBus \
++             --method org.freedesktop.DBus.NameHasOwner \
++             org.freedesktop.Notifications 2>/dev/null)" = "(true,)" ]; then
++  # -u critical : swaync garde les critiques a l'ecran jusqu'a reponse. Une
++  # demande de consentement qui s'efface toute seule au bout de 5 s serait une
++  # acceptation implicite deguisee en refus silencieux.
++  #
++  # -A implique --wait et bloque donc sans limite ; `timeout` fournit le delai.
++  ANSWER=$(timeout "$TIMEOUT" notify-send \
++      -a "AirDrop" -u critical -i "network-wireless-symbolic" \
++      -A "accept=✓ Accepter" -A "decline=✕ Refuser" \
++      "AirDrop — ${SENDER}" "${DETAIL:-Fichier entrant}" 2>/dev/null)
++  rc=$?
++  case "$ANSWER" in
++    accept)  log "accepted by user"; exit 0 ;;
++    decline) log "declined by user"; exit 1 ;;
++    *)
++      if [ "$rc" -eq 124 ]; then log "no answer within ${TIMEOUT}s - declining"
++      else log "notification gave no usable answer (rc=$rc) - declining"; fi
++      exit 1 ;;
++  esac
++fi
++
 +# Hyprland plutot que Sway. hyprland-dialog joue exactement le role que
 +# swaynag joue sur sway - il dessine sa propre surface et bloque jusqu'a la
 +# reponse - mais il ECRIT LE BOUTON CHOISI SUR STDOUT, ce qui supprime d'un
