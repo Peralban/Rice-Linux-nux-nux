@@ -82,6 +82,12 @@ class AirDropWidget(Gtk.Box):
         heading = Gtk.Label(label=self.s["title"], xalign=0, hexpand=True)
         heading.add_css_class("nk-sec")
         header.append(heading)
+        # Pastille d'état : la couleur dit en un coup d'œil, depuis n'importe
+        # quel onglet où l'on vient d'arriver, si la machine est visible.
+        self.dot = Gtk.Box(valign=Gtk.Align.CENTER)
+        self.dot.add_css_class("nk-dot")
+        self.dot.set_size_request(7, 7)
+        header.append(self.dot)
         self.append(header)
 
         # L'interrupteur, au centre : c'est la seule chose qu'on vient faire
@@ -103,27 +109,44 @@ class AirDropWidget(Gtk.Box):
         centre.append(self.hint)
         self.append(centre)
 
-        # Choix de la cible. En « Tout le monde » tout appareil Apple a portee
-        # repond, et le defaut du demon prend le premier arrive - donc au
-        # hasard. La liste vient du dernier browse mDNS.
-        pick = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
-        self.targets = Gtk.DropDown.new_from_strings([self.s["none"]])
-        self.targets.set_sensitive(False)
-        self.scan = Gtk.Button(tooltip_text=self.s["scan"], valign=Gtk.Align.CENTER)
-        self.scan.set_child(Gtk.Image.new_from_icon_name("view-refresh-symbolic"))
-        self.scan.add_css_class("nk-tab")
-        self.scan.connect("clicked", self._on_scan)
-        pick.append(self.targets)
-        pick.append(self.scan)
-        self.append(pick)
-        self._targets = []
-
         self.send = Gtk.Button(label=self.s["send"], halign=Gtk.Align.CENTER)
         self.send.add_css_class("nk-btn")
         self.send.connect("clicked", self._on_send)
         self.append(self.send)
 
-        self.foot = Gtk.Label(label=self.s["recv"], halign=Gtk.Align.CENTER)
+        # Choix de la cible. En « Tout le monde » tout appareil Apple à portée
+        # répond et le démon prendrait le premier arrivé, donc au hasard.
+        #
+        # La liste ne s'affiche QUE s'il y a des appareils : une liste
+        # déroulante pleine largeur annonçant « aucun appareil » occupait la
+        # moitié du panneau pour ne rien dire, et c'est l'état normal tant
+        # qu'aucun scan n'a abouti. Sans appareil, il ne reste qu'un lien
+        # discret pour en chercher.
+        self.pick = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,
+                              transition_duration=120,
+                              hhomogeneous=False, vhomogeneous=False)
+
+        self.scan = Gtk.Button(label=self.s["scan"], halign=Gtk.Align.CENTER)
+        self.scan.add_css_class("nk-link")
+        self.scan.connect("clicked", self._on_scan)
+        self.pick.add_named(self.scan, "none")
+
+        row = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        self.targets = Gtk.DropDown.new_from_strings([self.s["none"]])
+        self.targets.add_css_class("nk-pick")
+        rescan = Gtk.Button(tooltip_text=self.s["scan"], valign=Gtk.Align.CENTER)
+        rescan.set_child(Gtk.Image.new_from_icon_name("view-refresh-symbolic"))
+        rescan.add_css_class("nk-tab")
+        rescan.connect("clicked", self._on_scan)
+        row.append(self.targets)
+        row.append(rescan)
+        self.pick.add_named(row, "list")
+        self.pick.set_visible_child_name("none")
+        self.append(self.pick)
+        self._targets = []
+
+        self.foot = Gtk.Label(label=self.s["recv"], halign=Gtk.Align.CENTER,
+                              wrap=True, justify=Gtk.Justification.CENTER)
         self.foot.add_css_class("nk-meta")
         self.append(self.foot)
 
@@ -168,7 +191,6 @@ class AirDropWidget(Gtk.Box):
         self._targets = found or []
         names = [n for _i, n in self._targets] or [self.s["none"]]
         self.targets.set_model(Gtk.StringList.new(names))
-        self.targets.set_sensitive(bool(self._targets))
         self.foot.set_text(self.s["recv"] if self._targets else self.s["none"])
         self._render()
 
@@ -204,3 +226,13 @@ class AirDropWidget(Gtk.Box):
 
         has = bool(self.shelf.paths) if self.shelf is not None else False
         self.send.set_sensitive(on and has)
+
+        self.pick.set_visible_child_name("list" if self._targets else "none")
+        self.scan.set_sensitive(on)
+        for css, want in (("nk-on", on and state != "waking"),
+                          ("nk-warn", state in ("waking", "switching", "unreachable")),
+                          ("nk-bad", state in ("error", "missing"))):
+            if want:
+                self.dot.add_css_class(css)
+            else:
+                self.dot.remove_css_class(css)
