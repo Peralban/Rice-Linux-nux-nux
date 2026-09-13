@@ -151,7 +151,18 @@ class Notch(Gtk.ApplicationWindow):
 
         self.clip.set_child(self.stack)
         self.shell.append(self.clip)
-        self.set_child(self.shell)
+
+        # La surface monte jusqu'a y=0 et le decalage sous la barre est
+        # recree ICI, par un espaceur, au lieu d'etre une marge layer-shell.
+        # Avec la marge, la bande au-dessus du notch n'appartenait pas a la
+        # surface : amener la souris tout en haut de l'ecran en sortait, ce
+        # qui refermait le panneau alors qu'on visait justement la barre.
+        self.lift = Gtk.Box()
+        self.lift.set_size_request(-1, self._island_top())
+        holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        holder.append(self.lift)
+        holder.append(self.shell)
+        self.set_child(holder)
 
     def _compact_view(self):
         # Contenu centré, et la pastille se taille dessus : c'est ce qui la
@@ -271,7 +282,7 @@ class Notch(Gtk.ApplicationWindow):
         # pose sur la même bande, à la place du module mpris.
         LS.set_exclusive_zone(self, -1 if self.config.get(
             "notch", "in_bar", default=True) else 0)
-        LS.set_margin(self, LS.Edge.TOP, self._island_top())
+        LS.set_margin(self, LS.Edge.TOP, 0)
 
         wanted = self.config.get("notch", "monitor", default="primary")
         if wanted and wanted != "primary":
@@ -333,9 +344,12 @@ class Notch(Gtk.ApplicationWindow):
     # --- taille et animation --------------------------------------------
     def resize_to(self, width, height):
         """La seule combinaison qui fasse aussi bien grandir que rétrécir
-        une surface layer-shell (mesuré, voir l'en-tête)."""
+        une surface layer-shell (mesuré, voir l'en-tête).
+
+        La fenêtre est plus haute que la coque de la hauteur de l'espaceur
+        qui remplace l'ancienne marge layer-shell."""
         self.shell.set_size_request(width, height)
-        self.set_default_size(width, height)
+        self.set_default_size(width, height + self._island_top())
 
     def _on_frame(self, value):
         progress = value if self.open else 1.0 - value
@@ -546,7 +560,9 @@ class Notch(Gtk.ApplicationWindow):
         self.bar = waybar.read_bar()
         self.island = island
         self.compact.set_size_request(-1, self._pill_height())
-        LS.set_margin(self, LS.Edge.TOP, self._island_top())
+        # L'espaceur porte le décalage, plus la marge layer-shell : c'est lui
+        # qu'il faut réajuster quand la barre change de hauteur.
+        self.lift.set_size_request(-1, self._island_top())
         if not self.open:
             self.resize_to(*self._compact_geometry())
         return False
