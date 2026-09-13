@@ -1,0 +1,133 @@
+@define-color text            @inverse_surface;
+@define-color background-alt  @background;
+@define-color selected        @on_secondary;
+@define-color hover           @on_secondary_fixed_variant;
+@define-color urgent          @on_secondary_fixed;
+
+* {
+
+  /*background-alt:        @color1;      Buttons background */
+  /*selected:              @color2;      Button selected */
+  /*hover:                 @color5;      Hover button */
+  /*urgent:                @color6;      Urgency critical */
+  /*text-selected:         @background; */
+
+  color: @text;
+
+  all: unset;
+  font-size: 14px;
+  font-family: "JetBrains Mono Nerd Font";
+  transition: 200ms;
+
+}
+
+.notification-row {
+  outline: none;
+  margin: 0;
+  padding: 0px;
+}
+
+.floating-notifications.background .notification-row .notification-background {
+  background-color: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 8px 0 rgba(0,0,0,.6);
+  border: 1px solid @selected;
+  border-radius: 24px;
+  margin: 16px;
+  padding: 0;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification {
+  padding: 6px;
+  border-radius: 12px;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification.critical {
+  border: 2px solid @urgent;
+  /* Concentrique avec le conteneur, sinon le cadre d'urgence dessine un
+     second contour a 12px a l'interieur d'une boite arrondie a 24px et les
+     coins ne se suivent pas. 24 - 1px de bordure du parent = 23. */
+  border-radius: 23px;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification .notification-content {
+  margin: 14px;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification > *:last-child > * {
+  min-height: 3.4em;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification > *:last-child > * .notification-action {
+  /* Rayon et marge accordes au conteneur : a 8px de rayon et 6px de marge, le
+     coin carre du bouton depassait sous la courbe a 23px de la fenetre, et le
+     fond colore du survol venait mordre la bordure. */
+  border-radius: 14px;
+  background-color: @background-alt ;
+  margin: 10px;
+  border: 1px solid transparent;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification > *:last-child > * .notification-action:hover {
+  /* @hover valait @outline : un gris sur un gris, invisible au survol. Les
+     roles matugen portent deja l'accent du theme, autant s'en servir. */
+  background-color: @primary;
+  color: @on_primary;
+  border: 1px solid @primary;
+}
+
+/* Sur une notification critique, le dernier bouton est celui qui refuse -
+   c'est la demande de consentement AirDrop. Le teinter en @error au survol
+   evite d'accepter un fichier en visant mal, et reste dans la palette. */
+.floating-notifications.background .notification-row .notification-background .notification.critical > *:last-child > * .notification-action:last-child:hover {
+  /* @error est un rose clair - en aplat sur un theme sombre il hurle. Le role
+     _container existe pour ca : le meme sens, a l'intensite d'un fond. */
+  background-color: @error_container;
+  color: @on_error_container;
+  border: 1px solid @error_container;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification > *:last-child > * .notification-action:active {
+  background-color: @selected;
+  color: @background;
+}
+
+.image {
+  margin: 10px 20px 10px 0px;
+  border-radius: 10px;
+}
+
+.summary {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.body {
+  font-size: 0.8rem;
+}
+
+.floating-notifications.background .notification-row .notification-background .close-button {
+  margin: 6px;
+  padding: 2px;
+  border-radius: 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.floating-notifications.background .notification-row .notification-background .close-button:hover {
+  background-color: @selected;
+}
+
+.floating-notifications.background .notification-row .notification-background .close-button:active {
+  background-color: @selected;
+  color: @background;
+}
+
+.notification.critical progress {
+  background-color: @error;
+}
+
+.notification.low progress,
+.notification.normal progress {
+  background-color: @hover;
+}
+
