@@ -8,6 +8,7 @@ changement en direct via `hyprctl keyword`.
 import io
 import os
 import re
+import signal
 import subprocess
 
 import gi
@@ -183,7 +184,7 @@ T = {
         "reload": "Recharger depuis le fichier",
         "saved": "Enregistré dans looknfeel.conf",
         "reloaded": "Valeurs rechargées depuis le fichier",
-        "lang_menu": "Langue",
+        "lang_menu": "Langue — réglages, notch et docker",
         "hint": ("Les changements s'appliquent en direct",
                  "Rien n'est écrit tant que tu n'as pas cliqué sur Enregistrer."),
         "g_spacing": ("Espacements", "Marges autour et entre les fenêtres"),
@@ -222,7 +223,7 @@ T = {
         "reload": "Reload from file",
         "saved": "Saved to looknfeel.conf",
         "reloaded": "Values reloaded from file",
-        "lang_menu": "Language",
+        "lang_menu": "Language — settings, notch and dock",
         "hint": ("Changes apply instantly",
                  "Nothing is written to disk until you click Save."),
         "g_spacing": ("Spacing", "Margins around and between windows"),
@@ -339,6 +340,62 @@ def save_lang(lang):
             handle.write(lang)
     except OSError:
         pass
+
+
+# Les composants qui lisent LANG_FILE une seule fois, a leur demarrage. Le
+# fichier ne suffit donc pas : sans relance, changer la langue ici ne changeait
+# que cette fenetre, et le notch restait dans l'ancienne jusqu'a la prochaine
+# session - ce qui donne l'impression que le reglage ne marche pas.
+LANG_CONSUMERS = (
+    os.path.expanduser("~/.config/hypr/scripts/HyprNotch.py"),
+    os.path.expanduser("~/.config/hypr/scripts/HyprWhale.py"),
+)
+
+
+def _pids_running(script):
+    """PID des processus dont la ligne de commande contient ce chemin.
+
+    On lit /proc plutot que d'appeler pkill : un motif assez large pour
+    attraper "python .../HyprNotch.py" attrape aussi le shell qui le cherche,
+    et se tue lui-meme. Ici on compare des chemins exacts, et on s'exclut.
+    """
+    me = os.getpid()
+    found = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) == me:
+            continue
+        try:
+            with open("/proc/%s/cmdline" % entry, "rb") as fh:
+                args = fh.read().split(b"\0")
+        except OSError:
+            continue
+        if any(arg.decode("utf-8", "replace") == script for arg in args):
+            found.append(int(entry))
+    return found
+
+
+def restart_lang_consumers():
+    """Relance ceux qui tournent, laisse dormir ceux qui ne tournent pas."""
+    for script in LANG_CONSUMERS:
+        pids = _pids_running(script)
+        if not pids:
+            continue
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+        # Laisser la surface layer-shell se retirer avant d'en redemander une :
+        # deux notchs qui se chevauchent une seconde, c'est visible.
+        GLib.timeout_add(400, _respawn, script)
+
+
+def _respawn(script):
+    try:
+        subprocess.Popen([script], start_new_session=True)
+    except OSError:
+        pass
+    return False
 
 
 # --------------------------------------------------------------------------
@@ -485,6 +542,7 @@ class SettingsWindow(Adw.ApplicationWindow):
         self.lang = code
         save_lang(code)
         self.rebuild()
+        restart_lang_consumers()
 
     # -- (re)construction --------------------------------------------------
 
