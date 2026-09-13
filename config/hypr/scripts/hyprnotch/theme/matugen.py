@@ -35,6 +35,9 @@ FALLBACK = {
     "outline": "#8a8a8a", "outline_variant": "#3a3a3a",
     "primary": "#d0bcff", "on_primary": "#20124a",
     "secondary": "#ccc2dc", "tertiary": "#efb8c8",
+    # Sans cette entree, @error n'est defini nulle part quand matugen n'a
+    # jamais tourne, et GTK rejette LA FEUILLE ENTIERE, pas la seule regle.
+    "error": "#ffb4ab",
 }
 
 STYLE = """
@@ -219,6 +222,35 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   background: @surface;
 }}
 .nk-root switch:checked slider {{ background: @on_primary; }}
+
+/* Pastille d'etat : gris eteint par defaut, la couleur ne servant qu'a
+   signaler un ecart - visible, en transition, ou en panne. */
+.nk-dot {{
+  border-radius: 999px;
+  background: alpha(@on_surface, 0.25);
+}}
+.nk-dot.nk-on {{ background: @primary; }}
+.nk-dot.nk-warn {{ background: @tertiary; }}
+.nk-dot.nk-bad {{ background: @error; }}
+
+/* Lien discret : un bouton qui ne pese pas comme un bouton, pour une
+   action secondaire qu'on ne veut pas voir dominer le panneau. */
+.nk-root button.nk-link {{
+  min-height: 0; padding: 2px 6px;
+  background: none; border: none; box-shadow: none;
+  color: alpha(@on_surface_variant, 0.8);
+  font-size: 10.5px;
+}}
+.nk-root button.nk-link:hover {{ color: @primary; background: none; }}
+.nk-root button.nk-link:disabled {{ opacity: 0.4; }}
+
+.nk-root dropdown.nk-pick > button {{
+  min-height: 24px; padding: 2px 8px;
+  border: none; box-shadow: none; border-radius: 8px;
+  background: alpha(@on_surface, 0.08);
+  font-size: 11px;
+}}
+.nk-root dropdown.nk-pick > button:hover {{ background: alpha(@primary, 0.16); }}
 """
 
 
