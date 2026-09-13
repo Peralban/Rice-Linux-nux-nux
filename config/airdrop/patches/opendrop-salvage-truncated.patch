@@ -62,7 +62,7 @@
                      out += payload if stored else zlib.decompress(payload)
              return bytes(out)
  
-@@ -583,24 +616,115 @@
+@@ -583,24 +616,158 @@
                  self.send_header("Content-Length", 0)
                  self.end_headers()
  
@@ -78,20 +78,63 @@
 +            # rafales espacees de ~450 ms) pour ne pas couper un transfert
 +            # simplement lent.
 +            stall = float(os.environ.get("AIRDROP_STALL_TIMEOUT", "30"))
++            floor = float(os.environ.get("AIRDROP_STALL_FLOOR", "8"))
++
++            # LE DELAI SUIT LE RYTHME DU LIEN, il n'est pas constant.
++            #
++            # Un delai fixe de 30 s est ajoute a CHAQUE transfert sauve : sur
++            # les 43 s d'un transfert mesure, trente etaient du vide passe a
++            # attendre un expediteur qui s'etait deja taire. Mais on ne peut
++            # pas simplement raccourcir - le lien emet par rafales, et couper
++            # un transfert lent serait pire que d'attendre.
++            #
++            # Premiere tentative, abandonnee : declencher un palier court une
++            # fois arrive pres de `TotalBytes`. Ca suppose que l'expediteur
++            # s'arrete toujours au bord, ce qui est faux - mesure, les arrets
++            # vont de 440 octets a 69 138 octets avant la fin, soit 0,03 % a
++            # 4,9 %. Aucun seuil ne couvre les deux.
++            #
++            # Donc on ne devine plus ou est la fin : on observe l'ecart entre
++            # deux lectures reussies, et on attend un multiple large du pire
++            # ecart deja vu. Un lien regulier fait tomber le delai au plancher
++            # en quelques secondes ; un lien saccade le laisse monter tout
++            # seul. Le plancher reste dix fois au-dessus de l'espacement des
++            # rafales mesure (~450 ms, gigue 772 ms), et le plafond reste
++            # l'ancienne valeur, donc on ne peut jamais attendre PLUS qu'avant.
++            _arm = lambda sec: self.connection.settimeout(sec)
 +            try:
-+                self.connection.settimeout(stall)
++                _arm(stall)
 +            except OSError:
-+                pass
++                _arm = lambda sec: None
++
++            armed = stall
++            worst = 0.0
++            last = time.monotonic()
 +            try:
 +                while True:
 +                    buf = reader.read(65536)
 +                    if not buf:
 +                        break
 +                    raw.write(buf)
++
++                    now = time.monotonic()
++                    gap, last = now - last, now
++                    if gap > worst:
++                        worst = gap
++                        want = min(max(worst * 6.0, floor), stall)
++                        # Ne rearmer que sur un vrai changement : settimeout a
++                        # chaque bloc de 64 Kio serait un appel systeme par
++                        # bloc pour rien.
++                        if abs(want - armed) > 0.5:
++                            try:
++                                _arm(want)
++                            except OSError:
++                                pass
++                            armed = want
 +            except (socket.timeout, TimeoutError):
 +                logger.warning(
-+                    f"sender went quiet for {stall:.0f}s after {reader.total} B "
-+                    f"- salvaging what arrived")
++                    f"sender went quiet for {armed:.0f}s after {reader.total} B "
++                    f"(worst gap seen {worst:.1f}s) - salvaging what arrived")
 +            except (ConnectionResetError, ValueError) as exc:
 +                logger.warning(f"upload stream broke ({exc}) - salvaging")
 +            finally:
