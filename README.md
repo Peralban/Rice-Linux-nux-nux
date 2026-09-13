@@ -10,6 +10,30 @@ panels, launcher, terminal, notifications, login screen.
 
 ---
 
+## What it looks like
+
+![The bar](docs/screens/waybar.png)
+
+The notch lives inside the bar and expands downward on hover:
+
+![The notch, calendar page](docs/screens/notch-calendar.png)
+
+Its AirDrop page, which drives [airdrop-mt7921](https://github.com/jedbillyb/airdrop-mt7921):
+
+![The notch, AirDrop page](docs/screens/notch-airdrop.png)
+
+The Docker menu:
+
+![HyprWhale](docs/screens/hyprwhale.png)
+
+Nothing above uses a fixed colour. Every state below is the same palette,
+derived from the current wallpaper — `primary` for visible, `tertiary` for a
+transition, `error` for a fault:
+
+![AirDrop states](docs/screens/airdrop-etats.png)
+
+---
+
 ## The four applications
 
 Written in Python + GTK4 / libadwaita, bilingual French / English with a language
@@ -41,8 +65,8 @@ translates them into Hyprland syntax (`$mainMod SHIFT, S`).
 A notch living **inside the bar**, in the spirit of BoringNotch. It takes the
 place waybar's `mpris` module used to occupy: compact it shows the current
 track, on hover it expands downward into a panel — cover art, progress,
-controls, then a right column that switches between calendar, system stats and
-a file shelf.
+controls, then a right column that switches between calendar, system stats, a
+file shelf and AirDrop.
 
 The compact pill deliberately mirrors the `mpris` module it replaced — the same
 Nerd Font player glyph, the same italic `artist title` — and it sizes itself to
@@ -196,8 +220,18 @@ git clone git@github.com:Peralban/Rice-Linux-nux-nux.git ~/.rice-repo
 cd ~/.rice-repo && ./install.sh
 ```
 
-`install.sh` symlinks every file in the repository into `~/.config`, moving
-whatever it replaces to `~/.config-backup-<date>`.
+That installs everything. Components can also be taken one at a time — the bar
+without the launcher, the notch without the login screen:
+
+```bash
+./install.sh --list             # what is available
+./install.sh waybar matugen     # just those
+./install.sh --dry-run          # show the links, touch nothing
+```
+
+`install.sh` symlinks the files into `~/.config`, moving whatever it replaces to
+`~/.config-backup-<date>`. It tells you when a component will look broken
+without its neighbour — the bar without `matugen` has no palette to read.
 
 Files are **never copied**: `~/.config/hypr/hyprland.conf` is a symlink to
 `~/.rice-repo/config/hypr/hyprland.conf`. Editing either one is the same thing,
@@ -229,7 +263,10 @@ config/
 ├── matugen/                   palette generation chain
 ├── swaync/themes/             notification centre
 ├── vicinae/                   launcher settings (theme, compact mode, telemetry)
+├── airdrop/                   AirDrop: patches, tools, recovery path — see its README
 └── gtk-3.0, gtk-4.0/          the two lines that wire GTK into matugen
+
+docs/screens/                  the screenshots above
 
 system/
 └── sddm/                      login screen, mirrors the lock screen
