@@ -1,0 +1,36 @@
+diff --git a/daemon/core.c b/daemon/core.c
+index 2f5d3a9..bd0c879 100644
+--- a/daemon/core.c
++++ b/daemon/core.c
+@@ -474,9 +474,31 @@ static void awdl_adopt_chanseq(struct daemon_state *state) {
+ 			 * than a guess. */
+ 			int filled = awdl_chanseq_widen(seq, src->sequence, src->sequence_enc,
+ 			                                awdl->channel.widen_max);
++			uint8_t ours = awdl_chan_num(awdl->channel.master, AWDL_CHAN_ENC_OPCLASS);
++			int kept = awdl_chanseq_count_chan(src->sequence, src->sequence_enc, ours);
++
+ 			enc = src->sequence_enc;
+ 			if (filled)
+ 				log_debug("widened %s's sequence by %d slot(s)", ether_ntoa(&src->addr), filled);
++
++			/* Report the overlap even though we do not act on it here. Widening
++			 * changes what we ADVERTISE; it cannot move the radio, which the
++			 * P2P-GO chanctx holds on one channel. So "can this peer reach us"
++			 * has the same answer under every strategy, and until now it was
++			 * only ever measured under intersect -- which meant that switching
++			 * to widen silently blinded the one health line that carries it,
++			 * and the daemon went on reporting a green stack it was no longer
++			 * measuring. Same two shapes as the intersect case, under a
++			 * strategy-neutral label so a parser can take either. */
++			if (!kept) {
++				uint8_t want = awdl_chanseq_dominant_chan(src->sequence, src->sequence_enc, 0);
++
++				log_info("NO OVERLAP with %s on ch %d - peer wants ch %d",
++				         ether_ntoa(&src->addr), ours, want);
++			} else {
++				log_debug("overlap: %d/%d slots overlap %s on ch %d",
++				          kept, AWDL_CHANSEQ_LENGTH, ether_ntoa(&src->addr), ours);
++			}
+ 			break;
+ 		}
+ 		case AWDL_CHANSEQ_INTERSECT: {

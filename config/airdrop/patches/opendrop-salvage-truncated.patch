@@ -1,6 +1,40 @@
 --- a/opendrop/server.py
 +++ b/opendrop/server.py
-@@ -553,9 +553,24 @@
+@@ -273,6 +273,17 @@
+     protocol_version = "HTTP/1.1"
+     config = None
+ 
++    # Delai d'expiration sur TOUTE lecture de la socket, pas seulement celle
++    # du corps d'un upload.
++    #
++    # `handle_ask` lit le corps AVANT d'appeler le hook de consentement :
++    # quand l'AWDL du telephone s'endort pile a ce moment, la lecture bloque
++    # pour toujours, aucune fenetre n'est proposee, rien n'est journalise, et
++    # le telephone finit par afficher un refus. Mesure en direct sur un /Ask
++    # reste sans reponse. socketserver applique cet attribut a la socket de
++    # chaque requete, ce qui couvre /Discover et /Ask autant que /Upload.
++    timeout = float(os.environ.get("AIRDROP_STALL_TIMEOUT", "30"))
++
+     def _set_response(self, content_length):
+         """
+         Setting the default values for a successful response
+@@ -432,7 +443,14 @@
+         return True
+ 
+     def handle_ask(self):
+-        post_data = self._read_request_body()
++        try:
++            post_data = self._read_request_body()
++        except (socket.timeout, TimeoutError):
++            # Sans cela l'exception remonte dans le thread de la requete : le
++            # telephone n'obtient rien et l'utilisateur ne voit jamais passer
++            # la demande. Un refus explicite au moins se termine.
++            logger.warning("sender went quiet during /Ask - no prompt shown")
++            return
+ 
+         AirDropUtil.write_debug(self.config, post_data, "receive_ask_request.plist")
+ 
+@@ -553,9 +571,24 @@
                          break
                      payload = f.read(length)
                      if len(payload) < length:
@@ -28,7 +62,7 @@
                      out += payload if stored else zlib.decompress(payload)
              return bytes(out)
  
-@@ -583,24 +598,115 @@
+@@ -583,24 +616,115 @@
                  self.send_header("Content-Length", 0)
                  self.end_headers()
  

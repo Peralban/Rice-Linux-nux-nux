@@ -162,3 +162,24 @@ index 67b65fd..7eb9216 100755
        >> /run/airdrop-owl.log 2>&1 &
      for _ in $(seq 60); do
        ip link show awdl0 >/dev/null 2>&1 && break
+diff --git a/daemon/airdropd b/daemon/airdropd
+index 0fd8995..ec21126 100755
+--- a/daemon/airdropd
++++ b/daemon/airdropd
+@@ -934,9 +934,14 @@ serve_forever() {
+           # minute depending on how busy the air is. Whichever line is NEWER is
+           # the current state, and that holds at any log rate.
+           last_none=$(grep -a "NO OVERLAP" "$OWL_LOG" 2>/dev/null | tail -1)
+-          last_over=$(grep -a "intersect:" "$OWL_LOG" 2>/dev/null | tail -1)
++          # Either label: owl says "intersect:" under the intersect strategy
++          # and "overlap:" under widen. Matching only the first one meant that
++          # changing strategy blinded this line without changing anything it
++          # was supposed to measure - it read overlap=0/16 forever, and the
++          # diagnosis was then made on an indicator that had been switched off.
++          last_over=$(grep -aE "(intersect|overlap): " "$OWL_LOG" 2>/dev/null | tail -1)
+           want=$(printf '%s' "$last_none" | grep -oP 'peer wants ch \K[0-9]+')
+-          kept=$(printf '%s' "$last_over" | grep -oP 'intersect: \K[0-9]+')
++          kept=$(printf '%s' "$last_over" | grep -oP '(intersect|overlap): \K[0-9]+')
+           # Which of the two is the CURRENT state - compared by owl's own
+           # timestamps, since at -vv no fixed byte window means anything.
+           overlapping=1
