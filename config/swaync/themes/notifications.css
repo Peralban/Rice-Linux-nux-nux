@@ -131,3 +131,48 @@
   background-color: @hover;
 }
 
+
+/* --- swaync >= 0.12 -------------------------------------------------------
+   Le theme d'origine vise `.notification > *:last-child > * .notification-action`,
+   structure des versions precedentes. Depuis la 0.12 `.notification-action`
+   est le CONTENEUR et le bouton reel est `.notification-action > button` : les
+   regles plus haut ne matchent plus rien, ce qui se voyait a ce que le survol
+   ne faisait rien et que les boutons touchaient le bord arrondi. Les regles
+   ci-dessous visent la structure actuelle ; celles du dessus restent pour le
+   centre de notifications et les swaync plus anciens. */
+
+.floating-notifications.background .notification-row .notification-background .notification .notification-action {
+  margin: 8px;
+  padding: 0;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification .notification-action > button {
+  /* Rayon accorde a la fenetre (23px moins la marge) plutot que le carre par
+     defaut, sans quoi le fond du survol mord la courbe du coin. */
+  border-radius: 14px;
+  background-color: @background-alt;
+  color: @text;
+  border: 1px solid transparent;
+  padding: 6px 10px;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification .notification-action > button:hover {
+  background-color: @primary;
+  color: @on_primary;
+  border: 1px solid @primary;
+}
+
+.floating-notifications.background .notification-row .notification-background .notification .notification-action > button:active {
+  background-color: @selected;
+  color: @background;
+}
+
+/* Sur une notification critique le dernier bouton est celui qui refuse -
+   c'est la demande de consentement AirDrop. @error est un rose clair qui
+   hurle en aplat ; le role _container porte le meme sens a l'intensite d'un
+   fond. */
+.floating-notifications.background .notification-row .notification-background .notification.critical .notification-action:last-child > button:hover {
+  background-color: @error_container;
+  color: @on_error_container;
+  border: 1px solid @error_container;
+}
