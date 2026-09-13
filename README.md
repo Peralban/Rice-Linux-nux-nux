@@ -30,7 +30,7 @@ Nothing above uses a fixed colour. Every state below is the same palette,
 derived from the current wallpaper — `primary` for visible, `tertiary` for a
 transition, `error` for a fault:
 
-![AirDrop states](docs/screens/airdrop-etats.png)
+![AirDrop states](docs/screens/airdrop-states.png)
 
 ---
 
