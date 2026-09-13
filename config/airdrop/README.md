@@ -104,6 +104,21 @@ tailles ne détecte donc rien. Ce qui est incomplet est suffixé `.partial` —
 livrer en silence une photo à moitié vide qui s'ouvre quand même serait pire
 qu'un échec franc.
 
+**Le délai suit le rythme du lien**, il n'est pas constant. Un délai fixe de 30 s
+s'ajoutait à chaque transfert sauvé — sur 43 s mesurées, trente étaient du vide.
+Mais raccourcir bêtement couperait un transfert simplement lent. Premier essai,
+abandonné : déclencher un palier court près de `TotalBytes`. Ça suppose que
+l'expéditeur s'arrête au bord, ce qui est faux — mesuré, les arrêts vont de
+440 octets à 943 642 octets avant la fin, soit 0,03 % à 24 %. Aucun seuil ne
+couvre les deux.
+
+Donc le code n'essaie plus de deviner où est la fin : il observe l'écart entre
+deux lectures réussies et arme le délai à six fois le pire écart déjà vu, borné
+entre 8 et 30 s. Un lien régulier tombe au plancher, un lien saccadé laisse le
+délai monter seul. Vérifié en conditions réelles : `worst gap seen 3.2s` a donné
+19 s d'attente au lieu de 30, sur un transfert de 6 Mo arrivé complet — et un
+palier fixe de 8 s aurait coupé celui-là.
+
 Il ajoute aussi un délai d'expiration sur **toutes** les lectures de socket, pas
 seulement sur `/Upload` : `_next_chunk` bloquait dans `readline()` sans limite,
 donc un téléphone qui se tait figeait la boucle pour toujours et même les octets
