@@ -18,7 +18,7 @@ STRINGS = {
     "fr": {
         "title": "AIRDROP", "on": "Visible", "off": "Éteint",
         "send": "Envoyer l'étagère", "empty": "Étagère vide",
-        "target": "Cible", "scan": "Chercher des appareils",
+        "scan": "Chercher",
         "scanning": "Recherche…", "none": "Aucun appareil trouvé",
         "sent": "Envoi lancé", "recv": "Reçus dans ~/Downloads",
         "missing": "airdropd introuvable",
@@ -43,7 +43,7 @@ STRINGS = {
     "en": {
         "title": "AIRDROP", "on": "Visible", "off": "Off",
         "send": "Send the shelf", "empty": "Shelf is empty",
-        "target": "Target", "scan": "Look for devices",
+        "scan": "Look",
         "scanning": "Searching…", "none": "No device found",
         "sent": "Send started", "recv": "Received in ~/Downloads",
         "missing": "airdropd not found",
@@ -70,7 +70,7 @@ STRINGS = {
 
 class AirDropWidget(Gtk.Box):
     def __init__(self, lang="fr", shelf=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.s = STRINGS.get(lang, STRINGS["fr"])
         self.shelf = shelf
         self.tick = None
@@ -78,79 +78,74 @@ class AirDropWidget(Gtk.Box):
         self.backend = backend.AirDrop()
         self.backend.connect(self._on_state)
 
-        header = Gtk.Box(spacing=6)
-        heading = Gtk.Label(label=self.s["title"], xalign=0, hexpand=True)
-        heading.add_css_class("nk-sec")
-        header.append(heading)
-        # Pastille d'état : la couleur dit en un coup d'œil, depuis n'importe
-        # quel onglet où l'on vient d'arriver, si la machine est visible.
-        self.dot = Gtk.Box(valign=Gtk.Align.CENTER)
-        self.dot.add_css_class("nk-dot")
-        self.dot.set_size_request(7, 7)
-        header.append(self.dot)
-        self.append(header)
-
-        # L'interrupteur, au centre : c'est la seule chose qu'on vient faire
-        # ici la plupart du temps.
-        centre = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
-                         valign=Gtk.Align.CENTER, vexpand=True,
-                         halign=Gtk.Align.CENTER)
-
-        self.switch = Gtk.Switch(halign=Gtk.Align.CENTER)
-        self.switch.connect("state-set", self._on_switch)
-        centre.append(self.switch)
-
-        self.state = Gtk.Label(halign=Gtk.Align.CENTER)
-        self.state.add_css_class("nk-stat-val")
-        centre.append(self.state)
-
-        self.hint = Gtk.Label(halign=Gtk.Align.CENTER, wrap=True, justify=Gtk.Justification.CENTER)
-        self.hint.add_css_class("nk-meta")
-        centre.append(self.hint)
-        self.append(centre)
-
-        self.send = Gtk.Button(label=self.s["send"], halign=Gtk.Align.CENTER)
-        self.send.add_css_class("nk-btn")
-        self.send.connect("clicked", self._on_send)
-        self.append(self.send)
-
-        # Choix de la cible. En « Tout le monde » tout appareil Apple à portée
-        # répond et le démon prendrait le premier arrivé, donc au hasard.
+        # Le logo en grand comme point focal, a la maniere du panneau AirDrop
+        # d'Apple : on vient ici pour savoir si la machine est visible, et la
+        # reponse doit se lire avant tout texte. Les commandes vont en bas.
         #
-        # La liste ne s'affiche QUE s'il y a des appareils : une liste
-        # déroulante pleine largeur annonçant « aucun appareil » occupait la
-        # moitié du panneau pour ne rien dire, et c'est l'état normal tant
-        # qu'aucun scan n'a abouti. Sans appareil, il ne reste qu'un lien
-        # discret pour en chercher.
-        self.pick = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,
-                              transition_duration=120,
-                              hhomogeneous=False, vhomogeneous=False)
+        # Icone du theme plutot qu'un glyphe de police : les ondes
+        # concentriques SONT la marque AirDrop, et un codepoint Nerd Font
+        # absent se serait affiche en carre vide.
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
+                       valign=Gtk.Align.CENTER, vexpand=True,
+                       halign=Gtk.Align.CENTER)
 
-        self.scan = Gtk.Button(label=self.s["scan"], halign=Gtk.Align.CENTER)
-        self.scan.add_css_class("nk-link")
-        self.scan.connect("clicked", self._on_scan)
-        self.pick.add_named(self.scan, "none")
+        self.logo = Gtk.Image.new_from_icon_name("network-wireless-symbolic")
+        self.logo.set_pixel_size(40)
+        self.logo.add_css_class("nk-logo")
+        hero.append(self.logo)
 
-        row = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        name = Gtk.Label(label="AirDrop")
+        name.add_css_class("nk-name")
+        hero.append(name)
+
+        self.state = Gtk.Label()
+        self.state.add_css_class("nk-state")
+        hero.append(self.state)
+
+        self.hint = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
+        self.hint.add_css_class("nk-meta")
+        hero.append(self.hint)
+        self.append(hero)
+
+        # Les cibles n'apparaissent que s'il y en a : une liste annoncant
+        # « aucun appareil » prenait la place pour ne rien dire.
         self.targets = Gtk.DropDown.new_from_strings([self.s["none"]])
         self.targets.add_css_class("nk-pick")
-        rescan = Gtk.Button(tooltip_text=self.s["scan"], valign=Gtk.Align.CENTER)
-        rescan.set_child(Gtk.Image.new_from_icon_name("view-refresh-symbolic"))
-        rescan.add_css_class("nk-tab")
-        rescan.connect("clicked", self._on_scan)
-        row.append(self.targets)
-        row.append(rescan)
-        self.pick.add_named(row, "list")
-        self.pick.set_visible_child_name("none")
-        self.append(self.pick)
+        self.targets.set_visible(False)
+        self.append(self.targets)
         self._targets = []
 
-        self.foot = Gtk.Label(label=self.s["recv"], halign=Gtk.Align.CENTER,
-                              wrap=True, justify=Gtk.Justification.CENTER)
+        self.append(self._sep())
+
+        # Barre de commandes, en bas : l'interrupteur porte l'etat, les deux
+        # actions d'envoi suivent.
+        bar = Gtk.Box(spacing=8)
+        self.switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.switch.connect("state-set", self._on_switch)
+        bar.append(self.switch)
+
+        self.scan = Gtk.Button(label=self.s["scan"], valign=Gtk.Align.CENTER,
+                               hexpand=True, halign=Gtk.Align.END)
+        self.scan.add_css_class("nk-link")
+        self.scan.connect("clicked", self._on_scan)
+        bar.append(self.scan)
+
+        self.send = Gtk.Button(label=self.s["send"], valign=Gtk.Align.CENTER)
+        self.send.add_css_class("nk-act")
+        self.send.connect("clicked", self._on_send)
+        bar.append(self.send)
+        self.append(bar)
+
+        self.foot = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
         self.foot.add_css_class("nk-meta")
         self.append(self.foot)
 
-        self._render()
+    @staticmethod
+    def _sep():
+        line = Gtk.Box()
+        line.add_css_class("nk-sep")
+        line.set_size_request(-1, 1)
+        return line
 
     # --- cycle de vie ---------------------------------------------------
     def set_live(self, live):
@@ -191,7 +186,7 @@ class AirDropWidget(Gtk.Box):
         self._targets = found or []
         names = [n for _i, n in self._targets] or [self.s["none"]]
         self.targets.set_model(Gtk.StringList.new(names))
-        self.foot.set_text(self.s["recv"] if self._targets else self.s["none"])
+        self.foot.set_text("" if self._targets else self.s["none"])
         self._render()
 
     def _chosen(self):
@@ -224,15 +219,17 @@ class AirDropWidget(Gtk.Box):
         self.state.set_text(self.s["states"].get(state, state))
         self.hint.set_text(self.s["hint"].get(state, ""))
 
+        # C'est le logo qui porte l'etat : eteint il reste gris, et il ne
+        # prend une couleur que pour signaler un ecart.
+        for css, want in (("nk-run", state in ("idle", "armed", "sending")),
+                          ("nk-busy", state in ("waking", "switching", "unreachable")),
+                          ("nk-down", state in ("error", "missing"))):
+            if want:
+                self.logo.add_css_class(css)
+            else:
+                self.logo.remove_css_class(css)
+
         has = bool(self.shelf.paths) if self.shelf is not None else False
         self.send.set_sensitive(on and has)
-
-        self.pick.set_visible_child_name("list" if self._targets else "none")
         self.scan.set_sensitive(on)
-        for css, want in (("nk-on", on and state != "waking"),
-                          ("nk-warn", state in ("waking", "switching", "unreachable")),
-                          ("nk-bad", state in ("error", "missing"))):
-            if want:
-                self.dot.add_css_class(css)
-            else:
-                self.dot.remove_css_class(css)
+        self.targets.set_visible(bool(self._targets))

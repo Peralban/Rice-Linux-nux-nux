@@ -194,21 +194,51 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 
 .nk-sep {{ background: alpha(@outline, 0.18); min-width: 1px; min-height: 1px; }}
 
-/* --- airdrop --- */
-.nk-root button.nk-btn {{
-  min-height: 26px; padding: 3px 12px;
-  border: none; box-shadow: none;
-  border-radius: 999px;
-  background: alpha(@primary, 0.16);
+/* --- airdrop : meme grammaire visuelle que HyprWhale --- */
+/* Le logo porte l'etat : gris au repos, il ne se colore que pour signaler
+   un ecart. C'est la premiere chose qu'on lit en arrivant sur la page. */
+.nk-root .nk-logo {{ color: alpha(@on_surface, 0.30); }}
+.nk-root .nk-logo.nk-run  {{ color: @primary; }}
+.nk-root .nk-logo.nk-busy {{ color: @tertiary; }}
+.nk-root .nk-logo.nk-down {{ color: @error; }}
+.nk-root .nk-name {{ font-weight: 700; font-size: 14px; letter-spacing: 0.3px; }}
+.nk-root .nk-state {{ font-size: 11px; color: @on_surface_variant; }}
+
+/* Bouton contourne plutot que pave plein. */
+.nk-root button.nk-act {{
+  min-height: 24px; padding: 0 10px; font-size: 11px;
+  border-radius: 7px;
+  background: none; box-shadow: none;
+  border: 1px solid alpha(@primary, 0.55);
   color: @primary;
-  font-size: 11px; font-weight: 600;
 }}
-.nk-root button.nk-btn:hover {{ background: alpha(@primary, 0.28); }}
-.nk-root button.nk-btn:disabled {{ background: alpha(@on_surface, 0.06);
-  color: alpha(@on_surface_variant, 0.5); }}
+.nk-root button.nk-act:hover {{ background: alpha(@primary, 0.16); }}
+.nk-root button.nk-act:disabled {{
+  border-color: alpha(@on_surface, 0.18);
+  color: alpha(@on_surface_variant, 0.5);
+}}
+
+/* Action secondaire, posee dans un titre de section : elle ne doit pas
+   peser comme un bouton. */
+.nk-root button.nk-link {{
+  min-height: 0; padding: 1px 6px;
+  background: none; border: none; box-shadow: none;
+  color: alpha(@on_surface_variant, 0.85);
+  font-size: 10px; letter-spacing: 0.6px;
+}}
+.nk-root button.nk-link:hover {{ color: @primary; background: none; }}
+.nk-root button.nk-link:disabled {{ opacity: 0.35; }}
+
+.nk-root dropdown.nk-pick > button {{
+  min-height: 24px; padding: 2px 8px;
+  border: none; box-shadow: none; border-radius: 7px;
+  background: alpha(@on_surface, 0.08);
+  font-size: 11px;
+}}
+.nk-root dropdown.nk-pick > button:hover {{ background: alpha(@primary, 0.16); }}
 
 .nk-root switch {{
-  min-width: 40px; min-height: 22px;
+  min-width: 38px; min-height: 20px;
   border: none; box-shadow: none;
   border-radius: 999px;
   background: alpha(@on_surface, 0.16);
@@ -216,41 +246,12 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root switch:checked {{ background: @primary; }}
 .nk-root switch:disabled {{ opacity: 0.35; }}
 .nk-root switch slider {{
-  min-width: 18px; min-height: 18px;
+  min-width: 16px; min-height: 16px;
   border: none; box-shadow: none;
   border-radius: 999px;
   background: @surface;
 }}
 .nk-root switch:checked slider {{ background: @on_primary; }}
-
-/* Pastille d'etat : gris eteint par defaut, la couleur ne servant qu'a
-   signaler un ecart - visible, en transition, ou en panne. */
-.nk-dot {{
-  border-radius: 999px;
-  background: alpha(@on_surface, 0.25);
-}}
-.nk-dot.nk-on {{ background: @primary; }}
-.nk-dot.nk-warn {{ background: @tertiary; }}
-.nk-dot.nk-bad {{ background: @error; }}
-
-/* Lien discret : un bouton qui ne pese pas comme un bouton, pour une
-   action secondaire qu'on ne veut pas voir dominer le panneau. */
-.nk-root button.nk-link {{
-  min-height: 0; padding: 2px 6px;
-  background: none; border: none; box-shadow: none;
-  color: alpha(@on_surface_variant, 0.8);
-  font-size: 10.5px;
-}}
-.nk-root button.nk-link:hover {{ color: @primary; background: none; }}
-.nk-root button.nk-link:disabled {{ opacity: 0.4; }}
-
-.nk-root dropdown.nk-pick > button {{
-  min-height: 24px; padding: 2px 8px;
-  border: none; box-shadow: none; border-radius: 8px;
-  background: alpha(@on_surface, 0.08);
-  font-size: 11px;
-}}
-.nk-root dropdown.nk-pick > button:hover {{ background: alpha(@primary, 0.16); }}
 """
 
 
