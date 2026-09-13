@@ -42,11 +42,12 @@
 }
 
 .floating-notifications.background .notification-row .notification-background .notification.critical {
-  border: 2px solid @urgent;
-  /* Concentrique avec le conteneur, sinon le cadre d'urgence dessine un
-     second contour a 12px a l'interieur d'une boite arrondie a 24px et les
-     coins ne se suivent pas. 24 - 1px de bordure du parent = 23. */
-  border-radius: 23px;
+  /* Aucun cadre propre. Le thema d'origine en dessinait un second, epais et
+     colore, a l'interieur de celui du conteneur - deux contours concentriques
+     de rayons differents, et une pop-up qui ne ressemblait a aucune autre du
+     bureau. L'urgence se lit deja aux deux boutons qui attendent une reponse ;
+     elle n'a pas besoin d'un anneau autour. */
+  border: none;
 }
 
 .floating-notifications.background .notification-row .notification-background .notification .notification-content {
@@ -141,19 +142,30 @@
    ci-dessous visent la structure actuelle ; celles du dessus restent pour le
    centre de notifications et les swaync plus anciens. */
 
+/* Le thema d'origine impose `min-height: 3.4em` aux enfants du dernier bloc -
+   48px par bouton, quoi qu'on mette dessus. C'est ce qui donnait ces deux
+   grosses bulles sans rapport avec le reste du theme : une notification
+   ordinaire du bureau tient en une ligne de texte et deux de detail. */
+.floating-notifications.background .notification-row .notification-background .notification > *:last-child > * {
+  min-height: 0;
+}
+
 .floating-notifications.background .notification-row .notification-background .notification .notification-action {
-  margin: 8px;
+  margin: 2px 6px 6px 6px;
   padding: 0;
+  min-height: 0;
 }
 
 .floating-notifications.background .notification-row .notification-background .notification .notification-action > button {
-  /* Rayon accorde a la fenetre (23px moins la marge) plutot que le carre par
-     defaut, sans quoi le fond du survol mord la courbe du coin. */
-  border-radius: 14px;
+  /* Rayon accorde a la fenetre plutot que le carre par defaut, sans quoi le
+     fond du survol mord la courbe du coin. */
+  border-radius: 10px;
   background-color: @background-alt;
   color: @text;
   border: 1px solid transparent;
-  padding: 6px 10px;
+  padding: 1px 12px;
+  min-height: 0;
+  font-size: 13px;
 }
 
 .floating-notifications.background .notification-row .notification-background .notification .notification-action > button:hover {
@@ -175,4 +187,13 @@
   background-color: @error_container;
   color: @on_error_container;
   border: 1px solid @error_container;
+}
+
+/* Texte centre dans la bulle. `text-align` est une propriete CSS GTK depuis
+   4.16 (on est en 4.22) - avant, l'alignement d'un GtkLabel n'etait reglable
+   que par la propriete xalign du widget, donc inatteignable depuis un theme. */
+.floating-notifications.background .notification-row .notification-background .notification .notification-default-action .notification-content .text-box .summary,
+.floating-notifications.background .notification-row .notification-background .notification .notification-default-action .notification-content .text-box .body,
+.floating-notifications.background .notification-row .notification-background .notification .notification-default-action .notification-content .text-box label {
+  text-align: center;
 }
