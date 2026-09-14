@@ -93,7 +93,7 @@ cherchée — qui déclenche un `update` plutôt qu'un `add`.
 **`opendrop-salvage-truncated.patch`** — le plus utile des trois.
 
 Un transfert interrompu était intégralement jeté. Mesure sur 17 transferts
-interrompus : **13 contenaient déjà le fichier complet** et ne perdaient que le
+interrompus : **9 contenaient déjà le fichier complet** et ne perdaient que le
 terminateur du conteneur ; le JPEG extrait était identique au sha256 près.
 
 Le patch récupère ces octets, et surtout **vérifie** ce qu'il rend. La
