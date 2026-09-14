@@ -18,7 +18,7 @@
      def _set_response(self, content_length):
          """
          Setting the default values for a successful response
-@@ -432,7 +443,14 @@
+@@ -432,7 +443,28 @@
          return True
  
      def handle_ask(self):
@@ -28,13 +28,27 @@
 +        except (socket.timeout, TimeoutError):
 +            # Sans cela l'exception remonte dans le thread de la requete : le
 +            # telephone n'obtient rien et l'utilisateur ne voit jamais passer
-+            # la demande. Un refus explicite au moins se termine.
++            # la demande.
++            #
++            # Et il ne suffit pas de sortir : sans statut ni fermeture, c'est
++            # une connexion keep-alive qu'on laisse ouverte, le handler reste
++            # occupe a attendre une requete suivante jusqu'a une autre
++            # expiration, et le telephone n'apprend jamais qu'il a ete
++            # refuse. On termine donc explicitement.
 +            logger.warning("sender went quiet during /Ask - no prompt shown")
++            try:
++                self.send_response(408)
++                self.send_header("Content-Length", "0")
++                self.send_header("Connection", "close")
++                self.end_headers()
++            except OSError:
++                pass
++            self.close_connection = True
 +            return
  
          AirDropUtil.write_debug(self.config, post_data, "receive_ask_request.plist")
  
-@@ -553,9 +571,24 @@
+@@ -553,9 +585,24 @@
                          break
                      payload = f.read(length)
                      if len(payload) < length:
@@ -62,7 +76,7 @@
                      out += payload if stored else zlib.decompress(payload)
              return bytes(out)
  
-@@ -583,24 +616,158 @@
+@@ -583,24 +630,184 @@
                  self.send_header("Content-Length", 0)
                  self.end_headers()
  
@@ -159,6 +173,9 @@
                      break
 -                raw.write(buf)
 +                try:
++                    # Champs ODC a position fixe : magic(6) dev(6) ino(6)
++                    # mode(6) ... namesize a 59, filesize a 65.
++                    mode = int(cpio[off + 18:off + 24], 8)
 +                    namesize = int(cpio[off + 59:off + 65], 8)
 +                    filesize = int(cpio[off + 65:off + 76], 8)
 +                except ValueError:
@@ -169,7 +186,15 @@
 +                data_off = name_off + namesize
 +                if name == "TRAILER!!!":
 +                    break
-+                out.append((name, data_off + filesize <= n))
++                # Le mode compte. Une archive d'iOS commence par le REPERTOIRE
++                # enveloppe, qui n'a pas de donnees et est donc toujours
++                # "complet" - meme dans un transfert coupe au premier bloc.
++                # Sans ce filtre il suffisait de ce repertoire pour que la
++                # liste des membres valides soit non vide, donc pour que les
++                # octets bruts soient supprimes alors qu'aucun fichier n'avait
++                # ete recupere. C'est la garantie `.partial` qui tombait.
++                regular = (mode & 0o170000) == 0o100000
++                out.append((name, data_off + filesize <= n, regular))
 +                off = data_off + filesize
 +            return out
 +
@@ -181,10 +206,12 @@
 +            echec franc.
 +            """
 +            good, bad = [], []
-+            for name, complete in odc_members(cpio_bytes):
++            for name, complete, regular in odc_members(cpio_bytes):
 +                base = os.path.basename(name)
 +                if not base or base == "." or base.startswith("._"):
 +                    continue
++                if not regular:
++                    continue   # repertoire enveloppe : ne prouve rien
 +                path = os.path.join(os.getcwd(), name)
 +                if not os.path.exists(path):
 +                    continue
@@ -216,9 +243,22 @@
 +                logger.info(f"Extracted into {os.getcwd()}: {', '.join(good)}")
 +                os.remove(raw_path)
              else:
++                # MEME VERIFICATION QUE POUR dvzip. Ce chemin extrayait puis
++                # supprimait les octets bruts sans rien controler - or
++                # libarchive complete a zero un membre tronque ici aussi, donc
++                # un cpio interrompu ressortait "reussi" avec un fichier rempli
++                # de zeros, et la source etait detruite. La garantie `.partial`
++                # ne valait que pour dvzip.
++                with open(raw_path, "rb") as fh:
++                    cpio_bytes = fh.read()
                  with open(raw_path, "rb") as raw:
                      extract_stream(raw)
-+                logger.info(f"Extracted into {os.getcwd()}")
++                good, bad = verify_extracted(cpio_bytes)
++                if bad:
++                    logger.warning(f"incomplete, kept as .partial: {', '.join(bad)}")
++                if not good:
++                    raise ValueError("no complete file in the transfer")
++                logger.info(f"Extracted into {os.getcwd()}: {', '.join(good)}")
 +                os.remove(raw_path)
          except Exception as e:  # noqa: BLE001 - any failure here must not lose the bytes
              logger.warning(f"Could not extract the archive ({e}).")
