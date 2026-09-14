@@ -1,6 +1,14 @@
 --- a/opendrop/server.py
 +++ b/opendrop/server.py
-@@ -273,6 +273,17 @@
+@@ -19,6 +19,7 @@
+ import io
+ import json
+ import logging
++import mmap
+ import os
+ import platform
+ import plistlib
+@@ -273,6 +274,17 @@
      protocol_version = "HTTP/1.1"
      config = None
  
@@ -18,7 +26,7 @@
      def _set_response(self, content_length):
          """
          Setting the default values for a successful response
-@@ -432,7 +443,28 @@
+@@ -432,7 +444,28 @@
          return True
  
      def handle_ask(self):
@@ -48,7 +56,7 @@
  
          AirDropUtil.write_debug(self.config, post_data, "receive_ask_request.plist")
  
-@@ -553,9 +585,24 @@
+@@ -553,9 +586,24 @@
                          break
                      payload = f.read(length)
                      if len(payload) < length:
@@ -76,7 +84,7 @@
                      out += payload if stored else zlib.decompress(payload)
              return bytes(out)
  
-@@ -583,24 +630,184 @@
+@@ -583,24 +631,219 @@
                  self.send_header("Content-Length", 0)
                  self.end_headers()
  
@@ -105,8 +113,10 @@
 +            # Premiere tentative, abandonnee : declencher un palier court une
 +            # fois arrive pres de `TotalBytes`. Ca suppose que l'expediteur
 +            # s'arrete toujours au bord, ce qui est faux - mesure, les arrets
-+            # vont de 440 octets a 69 138 octets avant la fin, soit 0,03 % a
-+            # 4,9 %. Aucun seuil ne couvre les deux.
++            # vont de 440 octets a 943 642 octets avant la fin, soit 0,03 %
++            # a 24 %. Aucun seuil ne couvre les deux. (Le chiffre a ete revu :
++            # la premiere version citait 69 138 / 4,9 %, mesure avant le
++            # transfert qui s'est arrete a 24 % de la fin.)
 +            #
 +            # Donc on ne devine plus ou est la fin : on observe l'ecart entre
 +            # deux lectures reussies, et on attend un multiple large du pire
@@ -170,8 +180,7 @@
 +            out, off, n = [], 0, len(cpio)
 +            while off + 76 <= n:
 +                if cpio[off:off + 6] != b"070707":
-                     break
--                raw.write(buf)
++                    break
 +                try:
 +                    # Champs ODC a position fixe : magic(6) dev(6) ino(6)
 +                    # mode(6) ... namesize a 59, filesize a 65.
@@ -180,6 +189,14 @@
 +                    filesize = int(cpio[off + 65:off + 76], 8)
 +                except ValueError:
 +                    break
++                # Ces champs viennent du reseau. `int(..., 8)` accepte un signe
++                # moins, et un filesize negatif fait que `off` n'avance plus :
++                # la boucle tourne alors sans fin DANS LE THREAD DE LA REQUETE,
++                # avec un fichier fabrique pour ca. Un namesize nul ne progresse
++                # pas non plus.
++                if namesize <= 0 or filesize < 0:
+                     break
+-                raw.write(buf)
 +                name_off = off + 76
 +                name = cpio[name_off:name_off + namesize].split(b"\0")[0]
 +                name = name.decode("utf-8", "replace")
@@ -212,7 +229,16 @@
 +                    continue
 +                if not regular:
 +                    continue   # repertoire enveloppe : ne prouve rien
-+                path = os.path.join(os.getcwd(), name)
++                # Le nom du membre est choisi par le pair. Joint tel quel,
++                # un `../../…` fait sortir du dossier de reception - et ce
++                # chemin finit dans os.replace() plus bas, donc on renommerait
++                # un fichier arbitraire de l'utilisateur. On resout et on exige
++                # que le resultat reste sous le dossier courant.
++                root = os.path.realpath(os.getcwd())
++                path = os.path.realpath(os.path.join(root, name))
++                if path != root and not path.startswith(root + os.sep):
++                    logger.warning(f"refusing member outside the receive dir: {name}")
++                    continue
 +                if not os.path.exists(path):
 +                    continue
 +                if complete:
@@ -243,17 +269,36 @@
 +                logger.info(f"Extracted into {os.getcwd()}: {', '.join(good)}")
 +                os.remove(raw_path)
              else:
+-                with open(raw_path, "rb") as raw:
+-                    extract_stream(raw)
 +                # MEME VERIFICATION QUE POUR dvzip. Ce chemin extrayait puis
 +                # supprimait les octets bruts sans rien controler - or
 +                # libarchive complete a zero un membre tronque ici aussi, donc
 +                # un cpio interrompu ressortait "reussi" avec un fichier rempli
 +                # de zeros, et la source etait detruite. La garantie `.partial`
 +                # ne valait que pour dvzip.
++                #
++                # L'echec d'extraction reste LOCAL : sur une archive coupee
++                # libarchive peut lever apres avoir ecrit des membres entiers,
++                # et remonter directement au handler exterieur laissait ces
++                # fichiers non classes - donc les incomplets jamais renommes
++                # en `.partial`. On verifie dans tous les cas.
++                try:
++                    with open(raw_path, "rb") as raw:
++                        extract_stream(raw)
++                except Exception as exc:  # noqa: BLE001 - la verification tranche
++                    logger.warning(f"archive ended early ({exc}) - checking what landed")
++
++                # mmap plutot que read() : ce chemin etait en flux, et tout
++                # charger doublait l'empreinte memoire sur une video de 45 Mo.
++                # odc_members ne fait que des tranches, une projection suffit.
 +                with open(raw_path, "rb") as fh:
-+                    cpio_bytes = fh.read()
-                 with open(raw_path, "rb") as raw:
-                     extract_stream(raw)
-+                good, bad = verify_extracted(cpio_bytes)
++                    size = os.fstat(fh.fileno()).st_size
++                    if size:
++                        with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as cpio_bytes:
++                            good, bad = verify_extracted(cpio_bytes)
++                    else:
++                        good, bad = [], []
 +                if bad:
 +                    logger.warning(f"incomplete, kept as .partial: {', '.join(bad)}")
 +                if not good:
