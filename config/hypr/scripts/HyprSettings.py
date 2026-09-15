@@ -468,7 +468,54 @@ def write_conf(values):
                 handle.writelines(lines)
 
 
+LUA_CONF = os.path.expanduser("~/.config/hypr/hyprland.lua")
+
+
+def lua_parser():
+    """Hyprland préfère hyprland.lua au .conf dès qu'il le trouve, et son
+    parseur Lua refuse net `hyprctl keyword` : « keyword can't work with
+    non-legacy parsers. Use eval. » Sans cette bascule, plus aucun curseur
+    du panneau ne se voyait à l'écran."""
+    return os.path.exists(LUA_CONF)
+
+
+def _lua_scalar(value):
+    text = str(value).strip().strip('"')
+    if text in ("true", "false"):
+        return text
+    try:
+        float(text)
+    except ValueError:
+        return '"%s"' % text.replace('"', '\\"')
+    return text
+
+
+def lua_config(path, value):
+    """Traduit « decoration:blur:size = 8 » en la table imbriquée que
+    `hl.config` attend."""
+    if path.startswith("general:gaps"):
+        # Type « css_gap » : le parseur Lua veut les quatre côtés nommés,
+        # pas la chaîne « haut,droite,bas,gauche » héritée du .conf.
+        sides = [part.strip() for part in str(value).split(",")]
+        if len(sides) == 1:
+            body = _lua_scalar(sides[0])
+        else:
+            while len(sides) < 4:
+                sides.append(sides[-1])
+            body = ("{ top = %s, right = %s, bottom = %s, left = %s }"
+                    % tuple(sides[:4]))
+    else:
+        body = _lua_scalar(value)
+    for key in reversed(path.split(":")):
+        body = "{ %s = %s }" % (key, body)
+    return "hl.config(%s)" % body
+
+
 def apply_live(path, value):
+    if lua_parser():
+        subprocess.run(["hyprctl", "eval", lua_config(path, value)],
+                       capture_output=True, check=False)
+        return
     subprocess.run(["hyprctl", "keyword", path, str(value)],
                    capture_output=True, check=False)
 
