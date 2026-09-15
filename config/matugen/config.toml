@@ -24,7 +24,7 @@ output_path = '~/.config/gtk-3.0/colors.css'
 [templates.gtk4]
 input_path = '~/.config/matugen/templates/gtk-colors.css'
 output_path = '~/.config/gtk-4.0/colors.css'
-post_hook = 'pkill -SIGUSR1 -f HyprWhale.py || true'
+post_hook = 'pkill -SIGUSR1 -f "Hypr(Whale|Notes)[.]py" || true'
 
 [templates.rofi]
 input_path = '~/.config/matugen/templates/rofi-colors.rasi'

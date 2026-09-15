@@ -296,7 +296,7 @@ hl.window_rule({
 hl.window_rule({ name = "save-dialog", match = { title = "^(Save As|Save a File|Pick Files)$" }, float = true, size = "50% 60%", center = true })
 hl.window_rule({ name = "open-dialog", match = { initial_title = "(Open Files)" }, float = true, size = "70% 60%" })
 
--- les quatre applications maison
+-- les quatre panneaux maison (les notes se tuilent, pas de regle)
 hl.window_rule({ name = "hyprsettings", match = { class = "dev.local.HyprSettings" }, float = true, size = "580 720", center = true })
 hl.window_rule({ name = "hyprkeys", match = { class = "dev.local.HyprKeys" }, float = true, size = "680 780", center = true })
 hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, float = true, move = "1178 66" })
@@ -352,7 +352,8 @@ hl.bind(mod .. " + H", hl.dsp.exec_cmd("pkill -SIGUSR1 waybar"))
 -- config et aide
 hl.bind(mod .. " + slash", hl.dsp.exec_cmd(scripts .. "/CheatSheet.sh"))
 hl.bind(mod .. " + SHIFT + slash", hl.dsp.exec_cmd(scripts .. "/HyprKeys.py"))
-hl.bind(mod .. " + N", hl.dsp.exec_cmd(
+hl.bind(mod .. " + N", hl.dsp.exec_cmd(scripts .. "/HyprNotes.py"))
+hl.bind(mod .. " + SHIFT + N", hl.dsp.exec_cmd(
     "pkill -SIGUSR2 -f HyprNotch.py || " .. scripts .. "/HyprNotch.py"))
 hl.bind(mod .. " + SHIFT + K", hl.dsp.exec_cmd(scripts .. "/HyprSettings.py"))
 hl.bind(mod .. " + K", hl.dsp.exec_cmd("[float; size 1100 750] kitty nano " ..

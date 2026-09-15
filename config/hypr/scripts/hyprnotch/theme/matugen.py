@@ -148,6 +148,14 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 }}
 .nk-scale:hover slider {{ background: @primary; border-radius: 999px; }}
 
+/* --- notes --- */
+/* Le thème pose un fond opaque sur le nœud `text` d'une zone d'édition :
+   il faisait une dalle claire au milieu du panneau. */
+.nk-root .nk-note, .nk-root .nk-note text {{
+  background: transparent;
+  font-size: 11px;
+}}
+
 /* --- onglets de la colonne droite --- */
 .nk-root button.nk-tab {{
   min-width: 22px; min-height: 22px; padding: 0;

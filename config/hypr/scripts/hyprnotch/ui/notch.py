@@ -31,6 +31,7 @@ from ..widgets.files import FilesWidget
 from ..widgets.media import MediaWidget
 from ..widgets.system import SystemWidget
 from ..widgets.airdrop import AirDropWidget
+from ..widgets.notes import NotesWidget
 
 # Glyphes repris tels quels de l'ancien module mpris de la waybar, pour
 # que la pastille reste la même à l'œil.
@@ -89,6 +90,7 @@ PAGES = (
     ("system", "system-run-symbolic"),
     ("files", "folder-symbolic"),
     ("airdrop", "send-to-symbolic"),
+    ("notes", "view-list-bullet-symbolic"),
 )
 
 
@@ -238,10 +240,12 @@ class Notch(Gtk.ApplicationWindow):
         self.w_system = SystemWidget(self.lang)
         self.w_files = FilesWidget(self.lang)
         self.w_airdrop = AirDropWidget(self.lang, shelf=self.w_files)
+        self.w_notes = NotesWidget(self.lang, on_edit=self.pin_open)
         self.page_stack.add_named(self.w_calendar, "calendar")
         self.page_stack.add_named(self.w_system, "system")
         self.page_stack.add_named(self.w_files, "files")
         self.page_stack.add_named(self.w_airdrop, "airdrop")
+        self.page_stack.add_named(self.w_notes, "notes")
 
         self.tab_buttons = {}
         enabled = self.config.get("widgets", default={})
@@ -393,11 +397,18 @@ class Notch(Gtk.ApplicationWindow):
             LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
             self.expand()
 
+    def pin_open(self):
+        """Un widget réclame le clavier — on écrit dedans. Le notch cesse de
+        se refermer au mouvement de souris tant qu'on n'a pas fait Échap."""
+        self.pinned = True
+        LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
+
     def _set_live(self, live):
         self.w_media.set_live(live)
         page = self.page_stack.get_visible_child_name()
         self.w_system.set_live(live and page == "system")
         self.w_airdrop.set_live(live and page == "airdrop")
+        self.w_notes.set_live(live and page == "notes")
         if live:
             self.w_calendar.refresh()
 
@@ -412,6 +423,7 @@ class Notch(Gtk.ApplicationWindow):
                 button.remove_css_class("nk-on")
         self.w_system.set_live(self.open and name == "system")
         self.w_airdrop.set_live(self.open and name == "airdrop")
+        self.w_notes.set_live(self.open and name == "notes")
         if name == "calendar":
             self.w_calendar.refresh()
 
@@ -574,6 +586,7 @@ class Notch(Gtk.ApplicationWindow):
         Le fichier change avant que la waybar ne redémarre, donc au premier
         passage elle a encore son ancienne taille. On repasse pendant
         quelques secondes, le temps qu'elle se réaffiche."""
+        self.w_notes.reload_theme()
         self._align_to_bar()
         self._realign_left = 20
         if self._realign_source is None:
