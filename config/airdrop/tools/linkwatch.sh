@@ -18,7 +18,7 @@ IFACE="${LINKWATCH_IFACE:-wlan0}"
 MAXLINES=20000     # ~55 h ; au-dela on repart, le disque n'est pas le sujet
 
 mkdir -p "$(dirname "$LOG")"
-[ -s "$LOG" ] || printf 'heure\tassoc\tsignal\ttx\tgw_ms\tdns\tns\tresolv_mtime\troute\tairdrop\tvifs\tpair\tawdl_ms\n' > "$LOG"
+[ -s "$LOG" ] || printf 'heure\tassoc\tsignal\ttx\tgw_ms\tdns\tns\tresolv_mtime\troute\tairdrop\tvifs\tperte\tawdl_ms\n' > "$LOG"
 
 gw() { ip route show default 2>/dev/null | awk '/default/{print $3; exit}'; }
 
@@ -73,11 +73,17 @@ while :; do
 
   # Le chemin qui porte reellement AirDrop, mesure a part.
   p6=$(peer6)
+  # UN TAUX, PAS UN VERDICT. La premiere version envoyait deux paquets et
+  # ecrivait PERTE si le premier ne revenait pas - donc elle rendait le meme
+  # mot pour un lien mort et pour un lien qui perd 70 % en passant encore. Or
+  # c'est exactement la difference qu'on cherchait a voir. Six paquets suffisent
+  # a distinguer les deux sans peser sur le lien qu'on mesure.
   if [ -n "${p6:-}" ] && ip link show awdl0 >/dev/null 2>&1; then
-    awdl_ms=$(timeout 3 ping -6 -c2 -W1 -i 0.3 "$p6%awdl0" 2>/dev/null \
-              | awk -F'time=' '/time=/{print $2+0; exit}')
-    awdl_ms="${awdl_ms:-PERTE}"
-    pair=vu
+    out=$(timeout 6 ping -6 -c6 -W1 -i 0.3 "$p6%awdl0" 2>/dev/null)
+    pair=$(printf '%s' "$out" | grep -oE '[0-9]+% packet loss' | grep -oE '^[0-9]+')
+    pair="${pair:-100}%"
+    awdl_ms=$(printf '%s' "$out" | awk -F'/' '/rtt|round-trip/{printf "%.0f", $5}')
+    awdl_ms="${awdl_ms:--}"
   else
     pair=-; awdl_ms=-
   fi
