@@ -35,6 +35,83 @@ local outline = C.outline or "rgba(9a8f80ff)"
 local outline_variant = C.outline_variant or "rgba(4e4639ff)"
 
 --------------------------------------------------------------------------
+-- REGLAGES
+--------------------------------------------------------------------------
+-- HyprSettings ecrit dans looknfeel.conf et input.conf. Si ce fichier
+-- figeait ses propres valeurs, il les ecraserait a chaque demarrage et le
+-- panneau semblerait « oublier » tout ce qu'on y regle. On relit donc les
+-- .conf, comme on relit deja colors.conf pour la palette : une seule
+-- source de verite, et le panneau fait foi.
+
+local configs = os.getenv("HOME") .. "/.config/hypr/configs"
+
+local function read_conf(path)
+    local values, stack = {}, {}
+    local file = io.open(path, "r")
+    if not file then
+        return values
+    end
+    for raw in file:lines() do
+        -- Lua 5.4 : la variable de boucle est constante, on recopie.
+        local line = raw:gsub("#.*$", "")
+        local section = line:match("^%s*([%w_]+)%s*{%s*$")
+        if section then
+            stack[#stack + 1] = section
+        elseif line:match("^%s*}%s*$") then
+            stack[#stack] = nil
+        else
+            local key, value = line:match("^%s*([%w_.]+)%s*=%s*(.-)%s*$")
+            if key then
+                local prefix = table.concat(stack, ":")
+                -- « col.active_border » designe un chemin, pas un nom pointe
+                key = key:gsub("%.", ":")
+                values[(prefix ~= "" and prefix .. ":" or "") .. key] = value
+            end
+        end
+    end
+    file:close()
+    return values
+end
+
+local LOOK = read_conf(configs .. "/looknfeel.conf")
+local IN = read_conf(configs .. "/input.conf")
+
+local function num(t, key, fallback)
+    return tonumber(t[key]) or fallback
+end
+
+local function bool(t, key, fallback)
+    local value = t[key]
+    if value == "true" then return true end
+    if value == "false" then return false end
+    return fallback
+end
+
+local function str(t, key, fallback)
+    local value = t[key]
+    if value == nil or value == "" then return fallback end
+    return value
+end
+
+-- Les ecarts sont un type « css_gap ». Le parseur veut un entier ou une
+-- table aux quatre cotes NOMMES : la forme tableau { 2, 3, 3, 3 } est
+-- acceptee sans broncher puis ignoree, et les ecarts retombent a zero.
+-- C'est ce qui arrivait a gaps_out depuis le passage au Lua.
+local function gaps(t, key, fallback)
+    local value = t[key]
+    if value == nil or value == "" then return fallback end
+    local sides = {}
+    for part in value:gmatch("[^,]+") do
+        sides[#sides + 1] = tonumber(part:match("^%s*(.-)%s*$"))
+    end
+    if #sides == 0 or sides[1] == nil then return fallback end
+    if #sides == 1 then return sides[1] end
+    while #sides < 4 do sides[#sides + 1] = sides[#sides] end
+    -- .conf : haut, droite, bas, gauche
+    return { top = sides[1], right = sides[2], bottom = sides[3], left = sides[4] }
+end
+
+--------------------------------------------------------------------------
 -- MONITEUR
 --------------------------------------------------------------------------
 
@@ -79,41 +156,44 @@ hl.env("HYPRCURSOR_SIZE", "24")
 
 hl.config({
     general = {
-        gaps_in = 3,
-        gaps_out = { 2, 3, 3, 3 },   -- haut, droite, bas, gauche
-        border_size = 1,
+        gaps_in = gaps(LOOK, "general:gaps_in", 3),
+        gaps_out = gaps(LOOK, "general:gaps_out",
+            { top = 2, right = 3, bottom = 3, left = 3 }),
+        border_size = num(LOOK, "general:border_size", 1),
         col = {
+            -- Les bordures viennent de la palette, pas du .conf : il n'y
+            -- ecrit que « $outline », que seul le parseur legacy resout.
             active_border = outline,
             inactive_border = outline_variant,
         },
-        resize_on_border = false,
-        allow_tearing = false,
-        layout = "dwindle",
+        resize_on_border = bool(LOOK, "general:resize_on_border", false),
+        allow_tearing = bool(LOOK, "general:allow_tearing", false),
+        layout = str(LOOK, "general:layout", "dwindle"),
     },
 
     decoration = {
-        rounding = 10,
-        rounding_power = 2,
-        active_opacity = 1.0,
-        inactive_opacity = 0.8,
+        rounding = num(LOOK, "decoration:rounding", 10),
+        rounding_power = num(LOOK, "decoration:rounding_power", 2),
+        active_opacity = num(LOOK, "decoration:active_opacity", 1.0),
+        inactive_opacity = num(LOOK, "decoration:inactive_opacity", 0.8),
 
         shadow = {
-            enabled = false,
-            range = 4,
-            render_power = 3,
+            enabled = bool(LOOK, "decoration:shadow:enabled", false),
+            range = num(LOOK, "decoration:shadow:range", 4),
+            render_power = num(LOOK, "decoration:shadow:render_power", 3),
             color = 0xee1a1a1a,
         },
 
         blur = {
-            enabled = true,
-            size = 5,
-            passes = 2,
-            ignore_opacity = true,
-            new_optimizations = true,
-            special = false,
-            popups = true,
-            xray = true,
-            vibrancy = 0.1696,
+            enabled = bool(LOOK, "decoration:blur:enabled", true),
+            size = num(LOOK, "decoration:blur:size", 5),
+            passes = num(LOOK, "decoration:blur:passes", 2),
+            ignore_opacity = bool(LOOK, "decoration:blur:ignore_opacity", true),
+            new_optimizations = bool(LOOK, "decoration:blur:new_optimizations", true),
+            special = bool(LOOK, "decoration:blur:special", false),
+            popups = bool(LOOK, "decoration:blur:popups", true),
+            xray = bool(LOOK, "decoration:blur:xray", true),
+            vibrancy = num(LOOK, "decoration:blur:vibrancy", 0.1696),
         },
     },
 
@@ -135,13 +215,13 @@ hl.config({
     },
 
     input = {
-        kb_layout = "us",
-        follow_mouse = 1,
-        sensitivity = 0,
-        accel_profile = "flat",
-        force_no_accel = 1,
+        kb_layout = str(IN, "input:kb_layout", "us"),
+        follow_mouse = num(IN, "input:follow_mouse", 1),
+        sensitivity = num(IN, "input:sensitivity", 0),
+        accel_profile = str(IN, "input:accel_profile", "flat"),
+        force_no_accel = num(IN, "input:force_no_accel", 1),
         touchpad = {
-            natural_scroll = true,
+            natural_scroll = bool(IN, "input:touchpad:natural_scroll", true),
         },
     },
 

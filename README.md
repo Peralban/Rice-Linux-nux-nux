@@ -284,6 +284,22 @@ else.
 `ignore_alpha`, and `ignorezero` no longer exists. The `.conf` format itself
 disappears in 0.57 in favour of Lua.
 
+**Under the Lua config, `hyprctl keyword` is refused outright** — *"keyword
+can't work with non-legacy parsers. Use eval."* That is the one mechanism
+HyprSettings uses to apply a slider live, so every control went silent the day
+`hyprland.lua` landed in `~/.config/hypr/`. The panel now detects the parser and
+falls back to `hyprctl eval hl.config({...})`.
+
+**`hyprland.lua` reads `looknfeel.conf` and `input.conf` rather than freezing
+its own values**, the same way it already reads `colors.conf` for the palette.
+Without that, it overwrote every setting at each start and the panel appeared to
+forget what you had saved.
+
+**A `css_gap` wants its four sides named.** `gaps_out = { 2, 3, 3, 3 }` is
+accepted without a word of complaint and then ignored, which silently leaves the
+outer gaps at zero. Only `{ top = …, right = …, bottom = …, left = … }` — or a
+single integer — actually lands.
+
 **The `swww` package was renamed `awww`.** Configurations still calling
 `swww-daemon` fail silently.
 
