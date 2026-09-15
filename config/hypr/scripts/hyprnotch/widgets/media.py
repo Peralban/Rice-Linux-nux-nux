@@ -18,10 +18,21 @@ TICK_MS = 1000
 STRINGS = {
     "fr": {"idle": "Rien en lecture", "idle_sub": "Lance un morceau, il apparaîtra ici",
            "prev": "Précédent", "play": "Lecture", "pause": "Pause", "next": "Suivant",
-           "shuffle": "Aléatoire", "loop": "Répétition"},
+           "shuffle": "Aléatoire", "loop_none": "Répétition",
+           "loop_playlist": "Répéter la playlist", "loop_track": "Répéter le morceau"},
     "en": {"idle": "Nothing playing", "idle_sub": "Start a track and it shows up here",
            "prev": "Previous", "play": "Play", "pause": "Pause", "next": "Next",
-           "shuffle": "Shuffle", "loop": "Repeat"},
+           "shuffle": "Shuffle", "loop_none": "Repeat",
+           "loop_playlist": "Repeat playlist", "loop_track": "Repeat track"},
+}
+
+
+# La boucle a deux états actifs, pas un : « playlist » et « morceau » se
+# ressemblaient tant que seule la couleur les signalait. L'icône les sépare.
+LOOP_ICON = {
+    "none": "media-playlist-repeat-symbolic",
+    "playlist": "media-playlist-repeat-symbolic",
+    "track": "media-playlist-repeat-song-symbolic",
 }
 
 
@@ -108,8 +119,8 @@ class MediaWidget(Gtk.Box):
                                    self.s["play"], self.media.play_pause, big=True)
         self.b_next = self._button("media-skip-forward-symbolic",
                                    self.s["next"], self.media.next)
-        self.b_loop = self._button("media-playlist-repeat-symbolic",
-                                   self.s["loop"], self.media.cycle_loop)
+        self.b_loop = self._button(LOOP_ICON["none"],
+                                   self.s["loop_none"], self.media.cycle_loop)
         for widget in (self.b_shuffle, self.b_prev, self.b_play, self.b_next, self.b_loop):
             controls.append(widget)
         column.append(controls)
@@ -202,7 +213,10 @@ class MediaWidget(Gtk.Box):
         self.b_prev.set_sensitive(self.media.can("can_go_previous"))
         self.b_next.set_sensitive(self.media.can("can_go_next"))
         self._toggle_class(self.b_shuffle, self.media.shuffle)
-        self._toggle_class(self.b_loop, self.media.loop != "none")
+        loop = self.media.loop
+        self.b_loop.get_child().set_from_icon_name(LOOP_ICON.get(loop, LOOP_ICON["none"]))
+        self.b_loop.set_tooltip_text(self.s.get(f"loop_{loop}", self.s["loop_none"]))
+        self._toggle_class(self.b_loop, loop != "none")
 
         self._refresh_badge()
         self._refresh_art(track)
