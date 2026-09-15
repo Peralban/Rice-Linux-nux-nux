@@ -18,7 +18,7 @@ DEFAULTS = {
         "margin_top": 0,            # décalage en plus de celui de la waybar
         "in_bar": True,             # ignorer la zone exclusive : le notch se pose DANS la barre
         "hover_to_open": True,
-        "default_page": "calendar",   # calendar | system | files | airdrop
+        "default_page": "calendar",   # calendar | system | files | airdrop | notes
         "close_delay_ms": 180,      # anti-clignotement quand la souris sort
     },
     "appearance": {
@@ -34,6 +34,7 @@ DEFAULTS = {
         "system": True,
         "files": True,
         "airdrop": True,
+        "notes": True,
     },
     "theme": {
         # Palette Material You produite par matugen. Une seule source de

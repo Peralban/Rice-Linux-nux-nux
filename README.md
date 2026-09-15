@@ -34,7 +34,7 @@ transition, `error` for a fault:
 
 ---
 
-## The four applications
+## The five applications
 
 Written in Python + GTK4 / libadwaita, bilingual French / English with a language
 switcher, and themed from the system palette.
@@ -44,13 +44,15 @@ switcher, and themed from the system palette.
 | **HyprSettings** | `Super + Shift + K` | Settings panel: spacing, decoration, blur, bar, mouse and keyboard |
 | **HyprKeys** | `Super + Shift + /` | Graphical keybinding editor — captures the key combination as you press it |
 | **HyprWhale** | click the whale | Docker menu: containers, start/stop, terminal, logs |
-| **HyprNotch** | `Super + N`, or hover | Dynamic notch: media, calendar, system, file shelf |
+| **HyprNotch** | `Super + Shift + N`, or hover | Dynamic notch: media, calendar, system, file shelf, pinned note |
+| **HyprNotes** | `Super + N` | Notes as plain text files, with a sidebar that opens at the screen edge |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
 
 ### HyprSettings
 
-Every slider applies **live** through `hyprctl keyword`; nothing touches disk
-until you press *Save*. It writes to four different files depending on the
+Every slider applies **live** — through `hyprctl keyword` under the `.conf`
+parser, through `hyprctl eval hl.config({...})` under the Lua one, which refuses
+`keyword` outright. Nothing touches disk until you press *Save*. It writes to four different files depending on the
 setting — `looknfeel.conf`, `input.conf`, the waybar config and its stylesheet —
 changing only the value concerned.
 
@@ -66,7 +68,7 @@ A notch living **inside the bar**, in the spirit of BoringNotch. It takes the
 place waybar's `mpris` module used to occupy: compact it shows the current
 track, on hover it expands downward into a panel — cover art, progress,
 controls, then a right column that switches between calendar, system stats, a
-file shelf and AirDrop.
+file shelf, AirDrop and the note you pinned.
 
 The compact pill deliberately mirrors the `mpris` module it replaced — the same
 Nerd Font player glyph, the same italic `artist title` — and it sizes itself to
@@ -95,6 +97,30 @@ Playerctl signals**, so it follows whichever player is active — Spotify,
 Firefox, VLC — and nothing is hardcoded. Only the playback position is polled,
 and only while the panel is open.
 
+### HyprNotes
+
+One `.md` file per note in `~/.local/share/hyprnotes/`. No database, no custom
+format: the notes stay greppable, editable in nvim, and **they outlive the
+app**. The sidebar floats over the text rather than pushing it, and opens three
+ways — mouse at the left edge, `Ctrl + B`, or the header button.
+
+The text stays plain, but three conventions get dressed up in place: `# Heading`
+(down to `###`), `**bold**`, and `- [ ]` / `- [x]` checkboxes, which you tick by
+clicking the marker. The markers stay visible, only dimmed — hiding them inside
+an editable area makes the cursor jump across characters you cannot see.
+
+**The folder is also the bus between the app and the notch.** Both watch it with
+`Gio.FileMonitor`, so ticking a box in the notch moves a file and the window
+follows, and the other way round. No daemon, no socket — exactly how the theme
+already propagates in this repo. Each note carries two independent pins: one
+keeps it at the top of the list, the other shows it in the notch, and only one
+note at a time can hold the second.
+
+Editing inside the notch needs it pinned, since a notch opened on hover has
+`KeyboardMode.NONE` and receives no keys. Clicking into the text claims both the
+pin and the keyboard; `Escape` releases them. Ticking a box works either way — a
+click always gets through.
+
 ### HyprWhale
 
 Refreshes every 3 seconds in a background thread. State colours (green / amber /
@@ -117,7 +143,7 @@ it, regenerates **twelve files**, then notifies every application concerned:
 | waybar | `waybar/colors.css` | `pkill -SIGUSR2 waybar` |
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 3 and 4 | `gtk-*/colors.css` | `pkill -SIGUSR1 -f HyprWhale.py` |
+| GTK 3 and 4 | `gtk-*/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes)[.]py"` |
 | vicinae | `themes/matugen.toml` | `vicinae theme set matugen` |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | rofi, cava, spicetify, vesktop | — | — |
@@ -161,7 +187,8 @@ music playing.
 | `Super + Shift + E` | Yazi |
 | `Super + B` | Browser |
 | `Super + C` | Colour picker |
-| `Super + N` | Open / close the notch |
+| `Super + N` | Open / hide the notes |
+| `Super + Shift + N` | Open / close the notch |
 | `Super + Shift + S` | Screenshot — saved **and** copied to the clipboard |
 | `Super + L` | Lock |
 | `Ctrl + Alt + Delete` | Quit Hyprland |
@@ -254,7 +281,8 @@ config/
 │   ├── hyprland.lua           the 0.57 port — validated, see Notes
 │   ├── configs/               keybinds, windowrules, tags, looknfeel, input, animations
 │   ├── scripts/               the applications + screenshot, wallpaper picker
-│   └── scripts/hyprnotch/     the notch, split into core / theme / ui / widgets
+│   ├── scripts/hyprnotch/     the notch, split into core / theme / ui / widgets
+│   └── scripts/hyprnotes/     the notes: store, light markup, window
 ├── waybar/
 │   ├── UserModules            Docker module and brightness slider
 │   ├── Modules                base definitions (tray, mpris, backlight…)

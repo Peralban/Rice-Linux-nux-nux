@@ -6,6 +6,7 @@ changement en direct via `hyprctl keyword`.
 """
 
 import io
+import json
 import os
 import re
 import signal
@@ -168,6 +169,87 @@ def write_waybar(values):
             pass
 
 
+NOTCH_CONF = os.path.expanduser("~/.config/hypr/scripts/.hyprnotch.json")
+
+# Les réglages du notch ne vivent pas dans hyprland.conf mais dans son
+# propre JSON. Ce qui suit « notch: » est le chemin dans ce fichier.
+NOTCH_KEYS = (
+    "notch:widgets.media",
+    "notch:widgets.calendar",
+    "notch:widgets.system",
+    "notch:widgets.files",
+    "notch:widgets.airdrop",
+    "notch:widgets.notes",
+    "notch:notch.hover_to_open",
+    "notch:notch.default_page",
+)
+
+NOTCH_PAGES = ["calendar", "system", "files", "airdrop", "notes"]
+
+
+def _notch_read_json():
+    try:
+        data = json.load(io.open(NOTCH_CONF, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def read_notch():
+    data = _notch_read_json()
+    out = {}
+    for path in NOTCH_KEYS:
+        node = data
+        for part in path[len("notch:"):].split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is None:
+            continue
+        out[path] = {True: "true", False: "false"}.get(node, str(node))
+    return out
+
+
+def write_notch(values):
+    """Réécrit le JSON du notch sans perdre les clés qu'on n'affiche pas :
+    l'utilisateur peut y avoir mis une géométrie ou un moniteur à la main."""
+    touched = [p for p in NOTCH_KEYS if p in values]
+    if not touched:
+        return False
+    data = _notch_read_json()
+    for path in touched:
+        parts = path[len("notch:"):].split(".")
+        node = data
+        for part in parts[:-1]:
+            child = node.get(part)
+            if not isinstance(child, dict):
+                child = {}
+                node[part] = child
+            node = child
+        raw = values[path]
+        node[parts[-1]] = raw == "true" if raw in ("true", "false") else raw
+    try:
+        os.makedirs(os.path.dirname(NOTCH_CONF), exist_ok=True)
+        with open(NOTCH_CONF, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+            handle.write("\n")
+    except OSError:
+        return False
+    return True
+
+
+def restart_notch():
+    """Les onglets se construisent au démarrage : un signal ne suffirait pas
+    à faire apparaître ou disparaître l'un d'eux, il faut relancer.
+
+    Le motif porte des crochets pour que `pkill` ne se reconnaisse pas
+    lui-même dans sa propre ligne de commande."""
+    subprocess.run(["pkill", "-f", "HyprNotch[.]py"], capture_output=True, check=False)
+    try:
+        subprocess.Popen([os.path.expanduser("~/.config/hypr/scripts/HyprNotch.py")],
+                         start_new_session=True)
+    except OSError:
+        pass
+
+
 def file_for(path):
     """Chaque reglage vit dans son fichier d'origine."""
     return INPUT_CONF if path.startswith("input:") else CONF
@@ -200,6 +282,15 @@ T = {
         "blur_on": ("Activer le flou", "Coupe entièrement l'effet si désactivé"),
         "blur_size": ("Intensité", "Rayon du flou appliqué derrière les fenêtres"),
         "blur_passes": ("Passes", "Chaque passe supplémentaire coûte cher — 2 est un bon compromis"),
+        "g_notch": ("Notch", "HyprNotch — appliqué à l'enregistrement, le notch redémarre"),
+        "nk_media": ("Lecteur média", "La pastille de lecture et son panneau"),
+        "nk_calendar": ("Calendrier", "Le mois en cours, dans la colonne de droite"),
+        "nk_system": ("Système", "Processeur, mémoire, batterie, réseau"),
+        "nk_files": ("Étagère à fichiers", "Déposer ici, récupérer ailleurs"),
+        "nk_airdrop": ("AirDrop", "Envoi et réception vers les appareils Apple"),
+        "nk_notes": ("Notes", "La note épinglée depuis HyprNotes, cochable ici"),
+        "nk_hover": ("Ouvrir au survol", "Sans ça, seul Super+N ouvre le panneau"),
+        "nk_page": ("Onglet par défaut", "Celui qui s'affiche à l'ouverture"),
         "g_input": ("Souris et clavier", "Périphériques de saisie"),
         "sensitivity": ("Sensibilité de la souris", "0 = vitesse brute du capteur, sans correction"),
         "natural_scroll": ("Défilement naturel", "Le contenu suit le doigt, comme sur un téléphone"),
@@ -239,6 +330,15 @@ T = {
         "blur_on": ("Enable blur", "Turns the effect off entirely"),
         "blur_size": ("Strength", "Blur radius applied behind windows"),
         "blur_passes": ("Passes", "Each extra pass is expensive — 2 is a good balance"),
+        "g_notch": ("Notch", "HyprNotch — applied on save, the notch restarts"),
+        "nk_media": ("Media player", "The playback pill and its panel"),
+        "nk_calendar": ("Calendar", "The current month, in the right column"),
+        "nk_system": ("System", "CPU, memory, battery, network"),
+        "nk_files": ("File shelf", "Drop here, pick up elsewhere"),
+        "nk_airdrop": ("AirDrop", "Sending and receiving with Apple devices"),
+        "nk_notes": ("Notes", "The note pinned from HyprNotes, tickable here"),
+        "nk_hover": ("Open on hover", "Without it, only Super+N opens the panel"),
+        "nk_page": ("Default tab", "The one shown when it opens"),
         "g_input": ("Mouse and keyboard", "Input devices"),
         "sensitivity": ("Mouse sensitivity", "0 = raw sensor speed, no correction"),
         "natural_scroll": ("Natural scrolling", "Content follows your finger, like on a phone"),
@@ -287,6 +387,16 @@ LAYOUT = [
         ("slider", "wb_spacing", "waybar:spacing", 0, 20, 1, 0),
         ("slider", "wb_margin_top", "waybar:margin-top", 0, 24, 1, 0),
         ("slider", "wb_margin_side", "waybar:margin-side", 0, 40, 1, 0),
+    ]),
+    ("g_notch", [
+        ("switch", "nk_media", "notch:widgets.media"),
+        ("switch", "nk_calendar", "notch:widgets.calendar"),
+        ("switch", "nk_system", "notch:widgets.system"),
+        ("switch", "nk_files", "notch:widgets.files"),
+        ("switch", "nk_airdrop", "notch:widgets.airdrop"),
+        ("switch", "nk_notes", "notch:widgets.notes"),
+        ("switch", "nk_hover", "notch:notch.hover_to_open"),
+        ("combo", "nk_page", "notch:notch.default_page", NOTCH_PAGES),
     ]),
     ("g_input", [
         ("slider", "sensitivity", "input:sensitivity", -1.0, 1.0, 0.05, 2),
@@ -429,6 +539,7 @@ def read_conf():
             continue
         values.update({path: value for _, path, value in _walk(lines)})
     values.update(read_waybar())
+    values.update(read_notch())
     numbers = re.findall(r"[\d.]+", values.get("general:gaps_out", "10"))
     if numbers:
         values["__gaps_top"] = numbers[0]
@@ -439,6 +550,7 @@ def read_conf():
 def write_conf(values):
     values = dict(values)
     write_waybar(values)
+    write_notch(values)
     top = values.pop("__gaps_top", None)
     side = values.pop("__gaps_side", None)
     if top is not None and side is not None:
@@ -534,6 +646,7 @@ class SettingsWindow(Adw.ApplicationWindow):
         self._pending = {}
         self._timer = None
         self._waybar_touched = False
+        self._notch_touched = False
 
         self.toasts = Adw.ToastOverlay()
 
@@ -704,6 +817,8 @@ class SettingsWindow(Adw.ApplicationWindow):
     def _queue(self, path, value):
         if path.startswith("waybar:"):
             self._waybar_touched = True
+        if path.startswith("notch:"):
+            self._notch_touched = True
         self._pending[path] = value
         self.save_button.set_sensitive(True)
         if self._timer is None:
@@ -712,7 +827,7 @@ class SettingsWindow(Adw.ApplicationWindow):
     def _flush(self):
         for path, value in self._pending.items():
             self.values[path] = value
-            if path.startswith("waybar:"):
+            if path.startswith("waybar:") or path.startswith("notch:"):
                 continue
             if path.startswith("__gaps"):
                 top = self.values.get("__gaps_top", "10")
@@ -732,6 +847,9 @@ class SettingsWindow(Adw.ApplicationWindow):
         if self._waybar_touched:
             subprocess.Popen([os.path.expanduser("~/.config/hypr/scripts/wbrestart.sh")])
             self._waybar_touched = False
+        if self._notch_touched:
+            restart_notch()
+            self._notch_touched = False
         self.save_button.set_sensitive(False)
         self.toasts.add_toast(Adw.Toast(title=T[self.lang]["saved"], timeout=2))
 
