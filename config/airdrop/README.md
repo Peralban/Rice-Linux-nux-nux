@@ -21,6 +21,11 @@ MT7921.
 
 ## Remettre les correctifs après un `git pull` amont
 
+Depuis le 15 septembre 2026, l'essentiel de ce qui vivait ici est **dans
+l'amont** : la PR jedbillyb/airdrop-mt7921#1 a été mergée (`a08aae3`), avec la
+dérivation du phy, l'ordre de `MT76`, la cascade de consentement et les deux
+correctifs opendrop. Ce qui reste local tient en un seul correctif.
+
 ```sh
 cd ~/.local/share/airdrop-mt7921
 git apply ~/.rice-repo/config/airdrop/patches/00-local-changes.patch
@@ -64,25 +69,26 @@ sudo install -o root -g root -m 755 build/daemon/owl /usr/local/bin/airdrop-owl
 
 ## Ce que corrigent ces patches
 
-**`00-local-changes.patch`** — trois choses dans le dépôt amont :
+**`00-local-changes.patch`** — une seule chose désormais, la **vérification
+d'interfaces** dans la boucle de santé d'`airdropd`.
 
-- `PHY` était codé en dur à `phy0` dans `airdrop-helper`, alors que
-  `airdrop.sh` le dérive correctement de l'interface. Après un rechargement du
-  driver la carte revient en `phy1` et `iw phy phy0 interface add` sort en
-  ENOENT, que le démon rapporte comme un problème de sudoers.
-- `MT76` était calculé **avant** `PHY`, donc le chemin contenait un trou
-  (`ieee80211//mt76`) et les contournements `runtime-pm`/`deep-sleep` étaient
-  sautés en silence — exactement la panne « le monitor ne capture rien » que
-  l'amont documente.
-- Le hook de consentement n'acceptait que `swaynag`, absent sous Hyprland : il
-  refusait donc tous les transferts. Porté sur une **notification actionnable**
-  (`notify-send -A`, rendue par swaync) avec repli sur `hyprland-dialog` puis
-  `swaynag`. L'objection amont contre `notify-send` — il rend 0 sans rien
-  montrer quand aucun démon ne tourne, le pire échec possible pour une demande
-  de consentement — est traitée plutôt qu'ignorée : on demande au bus si
-  quelqu'un sert `org.freedesktop.Notifications`, et seul un `accept` franc sur
-  stdout accepte. Expiration, fermeture, clic à côté, démon absent : tout
-  refuse.
+Elle ne vérifiait que les **processus**, jamais que leurs **interfaces**
+existaient encore. owl continue de tourner sur un vif moniteur supprimé sous
+lui sans un mot, `awdl0` survit comme une coquille sans radio derrière, et la
+barre affiche `armed` devant une pile morte. Elle teste maintenant `awdl0`, le
+moniteur qu'owl utilise réellement (`ackvif`) et, **en bi-canal seulement**,
+`go0` — ce dernier point corrigé le 15 septembre, parce que `DUALCHAN` vaut la
+chaîne `0` quand il est éteint, qui n'est pas vide : `${DUALCHAN:+go0}`
+réclamait donc `go0` en mono-canal, où il n'existe jamais, et déclarait morte
+une pile parfaitement vivante.
+
+C'est l'issue Peralban/airdrop-mt7921#3 ; le reste de ce correctif est parti
+en amont avec la PR #1.
+
+Les deux correctifs opendrop qui suivent sont **en amont depuis la PR #1** ;
+les copies gardées ici servent à reconstruire le venv, qui n'est pas le
+clone. Elles sont reprises telles quelles de `patches/` amont, y compris la
+correction du gzip tronqué que jedbillyb a ajoutée dans `2329e69`.
 
 **`opendrop-zeroconf-update-service.patch`** — `AirDropBrowser` n'avait pas de
 `update_service`, obligatoire depuis python-zeroconf 0.3x. L'exception était
@@ -127,6 +133,17 @@ handler, parce que `handle_ask` lit son corps de requête **avant** d'appeler le
 hook de consentement : un téléphone qui se taisait là bloquait sans fenêtre de
 confirmation et sans une ligne de journal. C'était exactement la « vidéo
 refusée » vue pendant les essais.
+
+**Le cas gzip tronqué**, corrigé par jedbillyb dans `2329e69` après la revue.
+La branche gzip décompressait avec `GzipFile.read()`, qui lève `EOFError` sur
+un flux sans marqueur de fin — or un transfert coupé est exactement ça. La
+vérification était donc **entièrement sautée** sur le cas même pour lequel le
+sauvetage existe, et les membres bourrés de zéros par libarchive n'étaient
+jamais renommés `.partial` : un fichier à moitié vide passait pour intact.
+Remplacé par `zlib.decompressobj(16 + zlib.MAX_WBITS)`, qui rend tout ce qui
+est arrivé sans lever. Rejoué ici sur un fichier de 300 Ko coupé à 60 % :
+avant `EOFError` et rien de renommé, après 184 418 octets rendus et
+`IMG_0001.JPG` reconnu incomplet.
 
 **`owl-overlap-under-widen.patch`** — **à ne pas appliquer pour l'instant**, voir
 la réserve à la fin de cette section. owl ne mesurait le recouvrement de
@@ -193,6 +210,17 @@ tourne.
 - `wifi-reset` arrache `owl` et `awdl0` sous une pile armée, qui se reconstruit
   alors en boucle autour d'un `opendrop` orphelin et reste bloquée en `waking`.
   L'ordre est : interrupteur sur off, `wifi-reset`, interrupteur sur on.
+- La boucle de santé vérifiait que les **processus** vivaient, jamais que leurs
+  **interfaces** existaient. owl continue de tourner sur un vif moniteur
+  supprimé sous lui sans rien dire, et `awdl0` survit comme une coquille sans
+  radio derrière : la barre affiche `armed` devant une pile morte. Vu trois
+  fois en une nuit — après un rechargement du driver, et après deux
+  arrêts/relances trop rapprochés. Elle teste maintenant `awdl0`, le moniteur
+  qu'owl utilise réellement (`ackvif`) et `go0`, et nomme celui qui manque.
+- Le chemin AWDL et la station tombent **indépendamment** : mesuré à la même
+  seconde sur la même radio, 70 % de perte vers le téléphone et 0 % vers la
+  box. Surveiller la station ne dit donc rien de l'état d'AirDrop, et c'est
+  pour ça que `tools/linkwatch.sh` mesure les deux séparément.
 - `airdrop.sh` laisse un `owl` orphelin quand il est interrompu, et le run
   suivant meurt sur `Could not open device: awdl0`.
 - NetworkManager prend `go0` en charge et lui donne la route par défaut via

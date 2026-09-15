@@ -1,32 +1,26 @@
+diff --git a/opendrop/client.py b/opendrop/client.py
+index 2d1df87..4335b5b 100644
 --- a/opendrop/client.py
 +++ b/opendrop/client.py
-@@ -142,6 +142,29 @@
-         if self.callback_remove is not None:
-             self.callback_remove(info)
+@@ -136,6 +136,21 @@ class AirDropBrowser:
+         if self.callback_add is not None:
+             self.callback_add(info)
  
 +    def update_service(self, zeroconf, service_type, name):
-+        """Mandatory since python-zeroconf 0.3x, and not decorative.
-+
-+        Without it the dispatcher raises AttributeError INSIDE the
-+        ServiceBrowser thread, which kills the thread: no discovery arrives
-+        afterwards, including the one being waited for. python-zeroconf has
-+        warned about this for releases (FutureWarning: "it'll become
-+        mandatory") and it is now fatal.
-+
-+        This is not a rare path. A receiver that re-announces - which is
-+        exactly what an iPhone does when its AirDrop state changes, and what
-+        `opendrop-mdns-reannounce.patch` makes this side do too - fires an
-+        "update" rather than an "add". So the peer you are looking for is
-+        precisely the one that took the browse down.
-+
-+        An update carries the same information as an add; only the event type
-+        differs, so it is reported the same way.
-+        """
++        # Required on a listener since python-zeroconf 0.3x. Without it the
++        # AttributeError is raised INSIDE the ServiceBrowser thread and kills
++        # it: the process stays up, the listener object is still there, and
++        # discovery simply never reports anything again.
++        #
++        # It matters more than a missing stub usually would, because a device
++        # that re-announces itself - which is exactly what the receiver you
++        # are waiting for does - fires update rather than add. So the one
++        # event you need is the one that takes the thread down.
 +        info = zeroconf.get_service_info(service_type, name)
 +        logger.debug(f"Update service {name}")
 +        if self.callback_add is not None:
 +            self.callback_add(info)
 +
- class AirDropClient:
-     def __init__(self, config, receiver):
-         self.config = config
+     def remove_service(self, zeroconf, service_type, name):
+         info = zeroconf.get_service_info(service_type, name)
+         logger.debug(f"Remove service {name}")
