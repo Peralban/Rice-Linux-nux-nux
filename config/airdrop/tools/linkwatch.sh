@@ -18,7 +18,7 @@ IFACE="${LINKWATCH_IFACE:-wlan0}"
 MAXLINES=20000     # ~55 h ; au-dela on repart, le disque n'est pas le sujet
 
 mkdir -p "$(dirname "$LOG")"
-[ -s "$LOG" ] || printf 'heure\tassoc\tsignal\ttx\tgw_ms\tdns\tns\tresolv_mtime\troute\tairdrop\tvifs\tperte\tawdl_ms\n' > "$LOG"
+[ -s "$LOG" ] || printf 'quand\tassoc\tsignal\ttx\tgw_ms\tdns\tns\tresolv_mtime\troute\tairdrop\tvifs\tperte\tawdl_ms\n' > "$LOG"
 
 gw() { ip route show default 2>/dev/null | awk '/default/{print $3; exit}'; }
 
@@ -41,7 +41,13 @@ peer6() {
 }
 
 while :; do
-  now=$(date +%H:%M:%S)
+  # AVEC LA DATE. La premiere version n'ecrivait que l'heure, et un journal
+  # qui couvre plusieurs jours devient alors illisible : un filtre sur une
+  # plage horaire ramasse toutes les journees a la fois, et deux soirees
+  # entrelacees se lisent comme deux mesureurs concurrents. Vu, et cru, le
+  # 15 septembre. Le champ reste unique parce que le separateur est une
+  # tabulation, donc rien de ce qui lit ce fichier ne change.
+  now=$(date '+%Y-%m-%d %H:%M:%S')
 
   link=$(iw dev "$IFACE" link 2>/dev/null)
   if printf '%s' "$link" | grep -q "^Connected"; then
