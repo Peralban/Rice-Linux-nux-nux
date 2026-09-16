@@ -325,6 +325,14 @@ else.
 `ignore_alpha`, and `ignorezero` no longer exists. The `.conf` format itself
 disappears in 0.57 in favour of Lua.
 
+**`ON_DEMAND` does not mean "take the keyboard", it means "the compositor
+will hand it over on the next click".** Switching to it *during* a click is
+therefore too late: that click was already settled under the previous mode,
+and a second one was needed for nothing. Arm it on hover instead — measured
+safe, since switching an already-mapped surface to `ON_DEMAND` takes no
+focus on its own. A surface *mapped* with it does, which is the case that
+misleads you.
+
 **A layer surface in `KeyboardMode.ON_DEMAND` keeps the keyboard only until
 you click elsewhere.** The compositor then serves the next window, but the
 notch stays pinned and open — alive on screen, listening to nothing, and you

@@ -113,6 +113,9 @@ class Notch(Gtk.ApplicationWindow):
         # compositeur donne le clavier ailleurs.
         self.editing = False
         self.hovered = False
+        # Dernier mode clavier demandé au compositeur. On le retient pour ne
+        # pas réémettre la requête à chaque mouvement de souris.
+        self.kb_mode = None
         self.close_source = None
         self.bar = waybar.read_bar()
         self.island = waybar.island_metrics()
@@ -245,7 +248,8 @@ class Notch(Gtk.ApplicationWindow):
         self.w_system = SystemWidget(self.lang)
         self.w_files = FilesWidget(self.lang)
         self.w_airdrop = AirDropWidget(self.lang, shelf=self.w_files)
-        self.w_notes = NotesWidget(self.lang, on_edit=self.pin_open)
+        self.w_notes = NotesWidget(self.lang, on_edit=self.pin_open,
+                                   on_arm=self.arm_keyboard)
         self.page_stack.add_named(self.w_calendar, "calendar")
         self.page_stack.add_named(self.w_system, "system")
         self.page_stack.add_named(self.w_files, "files")
@@ -286,7 +290,7 @@ class Notch(Gtk.ApplicationWindow):
             "notch", "layer", default="top") == "overlay" else LS.Layer.TOP
         LS.set_layer(self, layer)
         LS.set_anchor(self, LS.Edge.TOP, True)
-        LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+        self._set_kb(LS.KeyboardMode.NONE)
         # Zone exclusive à -1 : le notch ignore celle de la waybar et se
         # pose sur la même bande, à la place du module mpris.
         LS.set_exclusive_zone(self, -1 if self.config.get(
@@ -389,6 +393,8 @@ class Notch(Gtk.ApplicationWindow):
         if not self.open or self.pinned:
             return
         self.open = False
+        # Le notch se referme : plus rien n'y attend de frappe.
+        self._set_kb(LS.KeyboardMode.NONE)
         self.stack.set_visible_child_name("compact")
         self._set_live(False)
         # Le passage en fantôme attend la fin de l'animation : sinon la coque
@@ -403,15 +409,34 @@ class Notch(Gtk.ApplicationWindow):
             self.collapse()
         else:
             self.pinned = True
-            LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
+            self._set_kb(LS.KeyboardMode.ON_DEMAND)
             self.expand()
+
+    def _set_kb(self, mode):
+        """Une requête wayland par changement réel, pas par mouvement."""
+        if self.kb_mode == mode:
+            return
+        self.kb_mode = mode
+        LS.set_keyboard_mode(self, mode)
+
+    def arm_keyboard(self, on):
+        """Le pointeur entre ou sort d'une zone de saisie.
+
+        En layer-shell, `ON_DEMAND` ne dit pas « prends le clavier » mais
+        « le compositeur te le donnera au prochain clic ». L'armer pendant
+        le clic arrive donc trop tard : celui-ci a déjà été tranché sous
+        l'ancien mode, et il en fallait un second pour rien. On arme au
+        survol, avant que le clic n'arrive."""
+        if self.editing:
+            return
+        self._set_kb(LS.KeyboardMode.ON_DEMAND if on else LS.KeyboardMode.NONE)
 
     def pin_open(self):
         """Un widget réclame le clavier — on écrit dedans. Le notch cesse de
         se refermer au mouvement de souris tant qu'on n'a pas fait Échap."""
         self.editing = True
         self.pinned = True
-        LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
+        self._set_kb(LS.KeyboardMode.ON_DEMAND)
 
     def _on_active(self, *_):
         """Le compositeur vient de donner le clavier à une autre fenêtre.
@@ -432,7 +457,7 @@ class Notch(Gtk.ApplicationWindow):
         self.w_notes.flush()
         self.editing = False
         self.pinned = False
-        LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+        self._set_kb(LS.KeyboardMode.NONE)
         if not self.hovered:
             self._cancel_close()
             self.close_source = GLib.timeout_add(self.close_delay,
@@ -501,7 +526,7 @@ class Notch(Gtk.ApplicationWindow):
                 self.w_notes.flush()
             self.editing = False
             self.pinned = False
-            LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+            self._set_kb(LS.KeyboardMode.NONE)
             self.collapse()
             return True
         return False

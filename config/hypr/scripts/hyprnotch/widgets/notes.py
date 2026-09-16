@@ -34,12 +34,15 @@ STRINGS = {
 
 
 class NotesWidget(Gtk.Box):
-    def __init__(self, lang="fr", on_edit=None):
+    def __init__(self, lang="fr", on_edit=None, on_arm=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.s = STRINGS.get(lang, STRINGS["fr"])
         # Prévient le notch qu'on écrit : il doit s'épingler, sinon il se
         # referme au premier mouvement de souris et mange la frappe.
         self.on_edit = on_edit
+        # Prévient le notch que le pointeur survole le texte, pour qu'il
+        # ouvre le clavier avant le clic plutôt que pendant.
+        self.on_arm = on_arm
         self.store = Store()
         self.current = None
         self.dirty = False
@@ -61,11 +64,21 @@ class NotesWidget(Gtk.Box):
         self.text.add_css_class("nk-note")
         self.markup = markup.attach(self.text)
         self.text.get_buffer().connect("changed", self._on_typed)
-        # Le notch ouvert au survol n'a pas le clavier : `KeyboardMode.NONE`.
-        # Un clic, lui, passe toujours — c'est donc le clic qui réclame
-        # l'épinglage et le clavier, pas la prise de focus, qui n'arriverait
-        # jamais. Phase de capture pour passer avant la case à cocher, sans
-        # lui voler l'événement.
+        # Survoler le texte arme le clavier ; le clic, lui, épingle et
+        # prend le focus. Les deux gestes sont distincts parce que le
+        # compositeur tranche le sort d'un clic avec le mode qui était en
+        # vigueur avant lui : armer pendant le clic coûtait un second clic.
+        hover = Gtk.EventControllerMotion()
+        hover.connect("enter", lambda *_: self._arm(True))
+        # `motion` autant que `enter` : apres avoir rendu le clavier, le
+        # pointeur peut etre reste sur le texte, et aucune entree ne
+        # surviendrait plus. `_set_kb` ignore les repetitions.
+        hover.connect("motion", lambda *_: self._arm(True))
+        hover.connect("leave", lambda *_: self._arm(False))
+        self.text.add_controller(hover)
+
+        # Phase de capture pour passer avant la case à cocher, sans lui
+        # voler l'événement.
         claim = Gtk.GestureClick()
         claim.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         claim.connect("pressed", self._on_click)
@@ -133,6 +146,10 @@ class NotesWidget(Gtk.Box):
             min(offset, buffer.get_char_count())))
 
     # --- écriture -------------------------------------------------------
+    def _arm(self, on):
+        if self.on_arm:
+            self.on_arm(on)
+
     def _on_click(self, *_):
         if self.on_edit:
             self.on_edit()
