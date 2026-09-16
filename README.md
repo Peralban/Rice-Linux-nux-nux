@@ -107,6 +107,11 @@ and only while the panel is open.
 
 ### HyprNotes
 
+Also published on its own, so it runs without the rest of this rice:
+**[Peralban/HyprNotes](https://github.com/Peralban/HyprNotes)**. The copy here
+is the one this configuration symlinks; the notch tab lives in that repository
+under `integrations/hyprnotch/`, and points back here for the other half.
+
 One `.md` file per note in `~/.local/share/hyprnotes/`. No database, no custom
 format: the notes stay greppable, editable in nvim, and **they outlive the
 app**. The sidebar floats over the text rather than pushing it, and opens three
