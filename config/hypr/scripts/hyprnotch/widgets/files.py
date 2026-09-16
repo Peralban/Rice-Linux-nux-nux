@@ -6,14 +6,25 @@ fichier vers un gestionnaire, un terminal, un champ d'upload.
 """
 
 import os
+import threading
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk  # noqa: E402
 
 MAX_ITEMS = 12
+
+# Côté de la vignette. Assez grand pour reconnaître une image d'un coup
+# d'œil, assez petit pour que douze lignes tiennent dans le panneau.
+THUMB = 24
+
+# Vignettes déjà décodées, par chemin et empreinte du fichier. L'étagère se
+# redessine entièrement à chaque dépôt : sans ça on relançait un décodage
+# par ligne et par ajout.
+PREVIEWS = {}
 
 STRINGS = {
     "fr": {"title": "FICHIERS", "drop": "Déposer des fichiers ici",
@@ -48,6 +59,55 @@ def content_for(gfile):
         "text/uri-list", GLib.Bytes.new((gfile.get_uri() + "\r\n").encode())))
 
     return Gdk.ContentProvider.new_union(parts)
+
+
+def stamp_of(path):
+    """Identifie une version du fichier, pas seulement son nom."""
+    try:
+        info = os.stat(path)
+        return (path, info.st_mtime, info.st_size)
+    except OSError:
+        return (path, 0, 0)
+
+
+def load_preview(path, size, done):
+    """Cherche une vignette et rappelle `done(texture)` dans la boucle GTK.
+    Ne rappelle rien si le fichier n'a pas d'image à montrer."""
+    try:
+        info = Gio.File.new_for_path(path).query_info(
+            "standard::content-type,thumbnail::path,thumbnail::is-valid",
+            Gio.FileQueryInfoFlags.NONE, None)
+    except GLib.Error:
+        return
+
+    # La vignette du bureau d'abord : gratuite, déjà à la bonne taille, et
+    # elle couvre les vidéos et les PDF qu'on ne saurait pas rendre soi-même.
+    # Le drapeau compte autant que le chemin — le fichier en cache existe
+    # souvent alors qu'il ne correspond plus à ce qu'on regarde.
+    if info.get_attribute_boolean("thumbnail::is-valid"):
+        cached = info.get_attribute_byte_string("thumbnail::path")
+        if cached and os.path.exists(cached):
+            decode(cached, size, done)
+            return
+
+    if (info.get_content_type() or "").startswith("image/"):
+        decode(path, size, done)
+
+
+def decode(source, size, done):
+    """Le décodage part dans un fil : mesuré à 85 ms pour un PNG de 1,6 Mo,
+    de quoi faire tressaillir le notch à chaque dépôt."""
+    def work():
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                source, size, size, True)
+        except GLib.Error:
+            return
+        # La texture se construit dans la boucle principale : elle touche au
+        # rendu, le fil n'a rien à y faire.
+        GLib.idle_add(lambda: done(Gdk.Texture.new_for_pixbuf(pixbuf)))
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 class FilesWidget(Gtk.Box):
@@ -127,9 +187,12 @@ class FilesWidget(Gtk.Box):
         row.add_css_class("nk-file")
 
         gfile = Gio.File.new_for_path(path)
-        icon = Gtk.Image(pixel_size=16)
+        icon = Gtk.Image(pixel_size=THUMB)
         icon.set_from_gicon(self._icon_for(gfile))
         row.append(icon)
+        # L'icône thématique sert d'attente et de repli : si le fichier n'est
+        # pas une image, ou si le décodage échoue, elle reste.
+        self._attach_preview(path, icon)
 
         name = Gtk.Label(label=os.path.basename(path), xalign=0, ellipsize=3, hexpand=True)
         name.add_css_class("nk-file-name")
@@ -147,6 +210,27 @@ class FilesWidget(Gtk.Box):
         click.connect("released", lambda *_: self._open(gfile))
         row.add_controller(click)
         return row
+
+    def _attach_preview(self, path, image):
+        stamp = stamp_of(path)
+        cached = PREVIEWS.get(stamp)
+        if cached is not None:
+            self._show_preview(image, cached)
+            return
+
+        def done(texture):
+            PREVIEWS[stamp] = texture
+            self._show_preview(image, texture)
+            return False
+
+        # Deux fois la taille affichée : les écrans HiDPI rendent la vignette
+        # a son echelle, une texture au ras du pixel y baverait.
+        load_preview(path, THUMB * 2, done)
+
+    @staticmethod
+    def _show_preview(image, texture):
+        image.set_from_paintable(texture)
+        image.add_css_class("nk-thumb")
 
     @staticmethod
     def _icon_for(gfile):

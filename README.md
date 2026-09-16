@@ -91,6 +91,14 @@ The file shelf is a drop target. Files dropped on it are never copied or moved:
 it keeps paths, and each row is itself a drag source, so you pick them back up
 wherever you need them.
 
+Image rows carry a **thumbnail**. The desktop's own cached one is reused when
+`thumbnail::is-valid` confirms it still matches the file, which covers videos
+and PDFs for free; otherwise an `image/*` file is decoded in a worker thread
+and handed back through `GLib.idle_add`. Doing it inline is not an option —
+85 ms for a 1.6 MB PNG, times every row, and the panel stutters on each drop.
+The thumbnail becomes the drag icon too, since that already reuses the row's
+paintable.
+
 It is a **layer surface**, not a floating window, which is what makes it centre
 itself and expand from the middle for free. Media comes from **MPRIS through
 Playerctl signals**, so it follows whichever player is active — Spotify,
