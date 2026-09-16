@@ -312,6 +312,12 @@ else.
 `ignore_alpha`, and `ignorezero` no longer exists. The `.conf` format itself
 disappears in 0.57 in favour of Lua.
 
+**A layer surface in `KeyboardMode.ON_DEMAND` keeps the keyboard only until
+you click elsewhere.** The compositor then serves the next window, but the
+notch stays pinned and open — alive on screen, listening to nothing, and you
+have to click it again to wake it. It has to watch `notify::is-active`, save,
+release the keyboard and unpin on its own.
+
 **Under the Lua config, `hyprctl keyword` is refused outright** — *"keyword
 can't work with non-legacy parsers. Use eval."* That is the one mechanism
 HyprSettings uses to apply a slider live, so every control went silent the day

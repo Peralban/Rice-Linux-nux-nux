@@ -108,6 +108,11 @@ class Notch(Gtk.ApplicationWindow):
 
         self.open = False
         self.pinned = False
+        # Épinglé *pour écrire*, ce qui n'est pas la même chose qu'épinglé
+        # au clavier : seul le premier doit lâcher prise quand le
+        # compositeur donne le clavier ailleurs.
+        self.editing = False
+        self.hovered = False
         self.close_source = None
         self.bar = waybar.read_bar()
         self.island = waybar.island_metrics()
@@ -319,6 +324,9 @@ class Notch(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
+        # Perte du focus clavier : le compositeur a servi quelqu'un d'autre.
+        self.connect("notify::is-active", self._on_active)
+
     def _on_drag_accept(self, _target, drop):
         formats = drop.get_formats()
         dnd_log(f"accept: {formats.to_string()}")
@@ -390,6 +398,7 @@ class Notch(Gtk.ApplicationWindow):
 
     def toggle(self):
         if self.open:
+            self.editing = False
             self.pinned = False
             self.collapse()
         else:
@@ -400,8 +409,34 @@ class Notch(Gtk.ApplicationWindow):
     def pin_open(self):
         """Un widget réclame le clavier — on écrit dedans. Le notch cesse de
         se refermer au mouvement de souris tant qu'on n'a pas fait Échap."""
+        self.editing = True
         self.pinned = True
         LS.set_keyboard_mode(self, LS.KeyboardMode.ON_DEMAND)
+
+    def _on_active(self, *_):
+        """Le compositeur vient de donner le clavier à une autre fenêtre.
+
+        Sans ça le notch restait épinglé, donc ouvert, mais sans clavier :
+        un panneau bien vivant à l'écran qui n'écoutait plus rien, et qu'il
+        fallait recliquer pour réveiller. On rend la main plutôt que de
+        mentir sur l'état."""
+        if self.props.is_active or not self.editing:
+            return
+        self.release_edit()
+
+    def release_edit(self):
+        """Sauve la note en cours, rend le clavier, et laisse le survol
+        reprendre la main. Si la souris est déjà partie, on referme."""
+        if not self.editing:
+            return
+        self.w_notes.flush()
+        self.editing = False
+        self.pinned = False
+        LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
+        if not self.hovered:
+            self._cancel_close()
+            self.close_source = GLib.timeout_add(self.close_delay,
+                                                 self._deferred_close)
 
     def _set_live(self, live):
         self.w_media.set_live(live)
@@ -438,11 +473,13 @@ class Notch(Gtk.ApplicationWindow):
 
     # --- interactions ---------------------------------------------------
     def _on_enter(self, *_):
+        self.hovered = True
         self._cancel_close()
         if self.hover_opens:
             self.expand()
 
     def _on_leave(self, *_):
+        self.hovered = False
         if self.pinned:
             return
         self._cancel_close()
@@ -460,6 +497,9 @@ class Notch(Gtk.ApplicationWindow):
 
     def _on_key(self, _controller, keyval, _code, _state):
         if keyval == Gdk.KEY_Escape:
+            if self.editing:
+                self.w_notes.flush()
+            self.editing = False
             self.pinned = False
             LS.set_keyboard_mode(self, LS.KeyboardMode.NONE)
             self.collapse()
