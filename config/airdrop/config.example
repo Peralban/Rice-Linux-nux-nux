@@ -5,8 +5,17 @@
 # n'atteint jamais AP-ENABLED.
 REG="${REG:-FR}"
 
-# Le GO doit donc être construit sur un canal autorisé en FR. Parmi les
-# quatre que le démon accepte (6 36 44 149), seuls 6 et 36/44 le sont, et
-# la station est en 5 GHz : ch36. En auto le démon choisirait 149, parce
-# que la station (ch100) n'est pas elle-même constructible.
-AIRDROP_GO_CHAN="${AIRDROP_GO_CHAN:-36}"
+# Le canal du GO est laissé en `auto`, et c'est important : en auto le démon
+# suit le canal de la station dès qu'il est constructible (6, 36, 44, 149),
+# ce qui est exactement ce qu'on veut. Le GO partage alors le canal de la box
+# et la radio n'a rien à alterner — mesuré le 16 septembre, GO sur ch44 avec
+# la station sur ch36 donnait 60 ms de latence passerelle et trois fois plus
+# de rejets qu'un GO sur ch36.
+#
+# Ce réglage était figé à 36 parce que la station se trouvait alors sur le
+# canal 100, non constructible, et qu'auto retombait sur le 149 illégal en FR.
+# Ce n'est plus le cas, et le figer rend la config non portable : elle serait
+# fausse sur une autre box, ou après un changement de canal de celle-ci.
+#
+# AIRDROP_GO_CHAN=36 reste possible en variable d'environnement pour un test
+# ponctuel, sans toucher à ce fichier.
