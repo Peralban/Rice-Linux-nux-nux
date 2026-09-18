@@ -54,6 +54,7 @@ Puis, dans le venv d'opendrop :
 cd ~/owl/.venv-opendrop/lib/python3.*/site-packages
 patch -p1 -i ~/.rice-repo/config/airdrop/patches/opendrop-zeroconf-update-service.patch
 patch -p1 -i ~/.rice-repo/config/airdrop/patches/opendrop-salvage-truncated.patch
+patch -p1 -i ~/.rice-repo/config/airdrop/patches/opendrop-send-multifile.patch
 ```
 
 Et dans le clone d'owl (`~/owl`, pas versionné non plus) :
@@ -95,6 +96,21 @@ correction du gzip tronqué que jedbillyb a ajoutée dans `2329e69`.
 levée *dans* le thread du ServiceBrowser et le tuait : plus aucune découverte
 ensuite. Et c'est un appareil qui se réannonce — donc précisément la cible
 cherchée — qui déclenche un `update` plutôt qu'un `add`.
+
+**`opendrop-send-multifile.patch`** — un transfert au lieu de N.
+
+Le protocole porte plusieurs fichiers dans un seul `/Ask` : `send_ask()`
+construit déjà une entrée par fichier. Deux choses l'empêchaient d'arriver
+jusque-là. La ligne de commande déclarait `-f` au singulier, et
+`send_upload()` emballait son argument dans une liste d'un élément
+(`for f in [file_path]`), donc même une vraie liste n'aurait pas traversé.
+
+`-f` est maintenant répétable et `send_upload` accepte une chaîne ou une
+liste, comme `send_ask`. Avec le changement correspondant dans `airdropd`,
+cinq fichiers font un transfert et **une seule** demande d'acceptation sur le
+téléphone, au lieu de cinq.
+
+`-u` refuse toujours plus d'un fichier : un lien est un lien.
 
 **`opendrop-salvage-truncated.patch`** — le plus utile des trois.
 

@@ -1,0 +1,67 @@
+--- a/opendrop/cli.py
++++ b/opendrop/cli.py
+@@ -41,7 +41,14 @@
+     def __init__(self, args):
+         parser = argparse.ArgumentParser()
+         parser.add_argument("action", choices=["receive", "find", "send"])
+-        parser.add_argument("-f", "--file", help="File to be sent")
++        # REPETABLE. Le protocole porte plusieurs fichiers dans un seul
++        # transfert - send_ask construit une entree par fichier - mais la
++        # ligne de commande ne savait pas l'exprimer, et chaque appelant
++        # devait donc boucler : N transferts, N acceptations sur le
++        # telephone. `-f a -f b` en fait un seul. Un seul -f reste une liste
++        # d'un element, donc rien ne change pour les appels existants.
++        parser.add_argument("-f", "--file", action="append", metavar="FILE",
++                            help="File to be sent; repeat for several")
+         parser.add_argument(
+             "-u", "--url", help="'-f,--file is a URL", action="store_true"
+         )
+@@ -101,10 +108,14 @@
+             elif args.action == "find":
+                 self.find()
+             else:  # args.action == 'send'
+-                if args.file is None:
++                if not args.file:
+                     parser.error("Need -f,--file when using send")
+-                if not os.path.isfile(args.file) and not args.url:
+-                    parser.error("File in -f,--file not found")
++                if args.url and len(args.file) > 1:
++                    parser.error("-u,--url takes a single -f,--file")
++                if not args.url:
++                    for path in args.file:
++                        if not os.path.isfile(path):
++                            parser.error("File in -f,--file not found: %s" % path)
+                 self.file = args.file
+                 self.is_url = args.url
+                 if args.receiver is None:
+--- a/opendrop/client.py
++++ b/opendrop/client.py
+@@ -357,8 +357,13 @@
+ 
+     def send_upload(self, file_path, is_url=False, reask=None):
+         """
+-        Send a file to a receiver.
++        Send one or more files to a receiver.
++
++        `file_path` accepte une chaine ou une liste, comme send_ask, pour que
++        les deux moities d'un meme transfert se nourrissent de la meme valeur.
+         """
++        if isinstance(file_path, str):
++            file_path = [file_path]
+         # Don't send an upload request if we just sent a link
+         if is_url:
+             return
+@@ -510,7 +515,12 @@
+                 filter_name="gzip" if compress else None,
+                 archive_write_class=AbsArchiveWrite,
+             ) as archive:
+-                for f in [file_path]:
++                # La liste telle quelle, pas `[file_path]`. send_ask annonce
++                # deja une entree par fichier dans un seul /Ask ; emballer ici
++                # rendait ce chemin inutilisable et forcait l'appelant a faire
++                # un transfert par fichier, donc une acceptation par fichier
++                # sur le telephone.
++                for f in file_path:
+                     ff = os.path.basename(f)
+                     archive.add_abs_file(f, os.path.join(".", ff))
+             payload = stream.getvalue()
