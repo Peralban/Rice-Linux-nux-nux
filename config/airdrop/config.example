@@ -19,3 +19,13 @@ REG="${REG:-FR}"
 #
 # AIRDROP_GO_CHAN=36 reste possible en variable d'environnement pour un test
 # ponctuel, sans toucher à ce fichier.
+
+# Quel prompt de consentement. La cascade essaie d'abord le dialogue du
+# compositeur, ce qui est le bon defaut mais pas ce qu'on veut ici : la bulle
+# swaync est theme avec le reste du bureau, hyprland-dialog vole le focus au
+# milieu de l'ecran. `export` parce que le hook est lance par opendrop, pas
+# directement par le demon.
+#
+# Necessite jedbillyb/airdrop-mt7921#10. Tant qu'elle n'est pas mergee, le
+# clone doit rester sur la branche feat/confirm-ui.
+export AIRDROP_CONFIRM_UI=notify
