@@ -27,6 +27,12 @@
 	"custom/separator#blank",
 	"clock",
         "custom/separator#blank",	
+	// Native modules rather than the tray applets' icons: these are Nerd Font
+	// glyphs, so they take the bar's colour and follow the wallpaper. The
+	// applet icons came from the icon theme and never did.
+	"network",
+	"bluetooth",
+        "custom/separator#blank",	
 	"tray",
         "custom/separator#blank",	
         "hyprland/workspaces#alpha",

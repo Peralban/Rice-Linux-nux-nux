@@ -184,26 +184,29 @@ tooltip label{
 	margin: 0 0 0 3px;
 }
 /*-----Indicators----*/
+/* These four were the only hardcoded colours left in the bar, against the one
+   rule this repository actually has. A neon green and two different reds owe
+   nothing to the wallpaper and clash with whatever it picks. */
 #custom-hypridle.notactive,
 #idle_inhibitor.activated {
-	color: #39FF14;
+	color: @primary;
 }
 
 #pulseaudio.muted {
-	color: #cc3436;
+	color: @error;
 }
 #temperature.critical {
-	color: red;
+	color: @error;
 }
 
 @keyframes blink {
 	to {
-		color: #000000;
+		color: @on_error;
 	}
 }
 
 #battery.critical:not(.charging) {
-	color: #f53c3c;
+	color: @error;
 }
 
 #backlight-slider slider,
