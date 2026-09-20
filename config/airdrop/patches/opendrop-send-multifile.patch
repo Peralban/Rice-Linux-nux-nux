@@ -5,12 +5,12 @@
          parser = argparse.ArgumentParser()
          parser.add_argument("action", choices=["receive", "find", "send"])
 -        parser.add_argument("-f", "--file", help="File to be sent")
-+        # REPETABLE. Le protocole porte plusieurs fichiers dans un seul
-+        # transfert - send_ask construit une entree par fichier - mais la
-+        # ligne de commande ne savait pas l'exprimer, et chaque appelant
-+        # devait donc boucler : N transferts, N acceptations sur le
-+        # telephone. `-f a -f b` en fait un seul. Un seul -f reste une liste
-+        # d'un element, donc rien ne change pour les appels existants.
++        # REPEATABLE. The protocol carries several files in ONE transfer -
++        # send_ask already builds one entry per file - but the command line
++        # could not say so, so every caller had to loop around it: N
++        # transfers, N Accepts on the phone. `-f a -f b` makes that one.
++        # A single -f is still a one-element list, so nothing changes for
++        # existing callers.
 +        parser.add_argument("-f", "--file", action="append", metavar="FILE",
 +                            help="File to be sent; repeat for several")
          parser.add_argument(
@@ -43,8 +43,8 @@
 -        Send a file to a receiver.
 +        Send one or more files to a receiver.
 +
-+        `file_path` accepte une chaine ou une liste, comme send_ask, pour que
-+        les deux moities d'un meme transfert se nourrissent de la meme valeur.
++        `file_path` takes a string or a list, as send_ask does, so both
++        halves of one transfer can be fed from the same value.
          """
 +        if isinstance(file_path, str):
 +            file_path = [file_path]
@@ -56,11 +56,11 @@
                  archive_write_class=AbsArchiveWrite,
              ) as archive:
 -                for f in [file_path]:
-+                # La liste telle quelle, pas `[file_path]`. send_ask annonce
-+                # deja une entree par fichier dans un seul /Ask ; emballer ici
-+                # rendait ce chemin inutilisable et forcait l'appelant a faire
-+                # un transfert par fichier, donc une acceptation par fichier
-+                # sur le telephone.
++                # The list as given, not `[file_path]`. send_ask already
++                # announces one entry per file in a single /Ask; wrapping it
++                # here made this path unusable and forced the caller into
++                # one transfer per file, and so one Accept per file on the
++                # phone.
 +                for f in file_path:
                      ff = os.path.basename(f)
                      archive.add_abs_file(f, os.path.join(".", ff))

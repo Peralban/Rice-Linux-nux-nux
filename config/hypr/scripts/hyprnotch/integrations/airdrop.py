@@ -1,11 +1,11 @@
-"""Pont vers `airdropd`, le démon AirDrop du projet airdrop-mt7921.
+"""Bridge to `airdropd`, the AirDrop daemon from the airdrop-mt7921 project.
 
-Tout passe par le binaire du démon : lui seul sait parler au wrapper
-privilégié, et lui seul tient le verrou qui empêche deux bascules
-simultanées pendant les ~20 s de montée de la radio.
+Everything goes through the daemon's binary: it alone knows how to talk to the
+privileged wrapper, and it alone holds the lock that keeps two toggles from
+racing during the ~20 s the radio takes to come up.
 
-Rien n'est interrogé tant que la page n'est pas visible : `set_live()`
-suit la même discipline que le widget système.
+Nothing is queried while the page is not visible: `set_live()` follows the same
+discipline as the system widget.
 """
 
 import json
@@ -21,18 +21,17 @@ HOME = os.path.expanduser("~")
 DAEMON = os.path.join(HOME, ".local/share/airdrop-mt7921/daemon/airdropd")
 SENDER = os.path.join(HOME, ".local/share/airdrop-mt7921/daemon/airdrop-send")
 
-# Ce que la barre du projet amont exporte aussi : l'interrupteur doit
-# vouloir dire « on peut te droper dessus maintenant », sans étape BLE et
-# sans lâcher l'association Wi-Fi — soit always-on + P2P-GO.
+# What the upstream project's bar exports too: the switch has to mean "you can
+# be dropped on right now", with no BLE step and without giving up the Wi-Fi
+# association -- that is always-on plus P2P-GO.
 ENV = {"AIRDROP_ALWAYS": "1", "AIRDROP_DUALCHAN": "1"}
 
 STATE_FILE = os.path.join(
     os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "airdropd", "state.json")
 
-# Les états que le démon publie, et ce qu'ils veulent dire pour l'utilisateur.
-# « on » ne recouvre pas que `armed` : pendant la montée et pendant un envoi
-# la radio EST allumée, et afficher « off » là donne l'impression que la
-# bascule a échoué.
+# The states the daemon publishes, and what they mean to the user. "on" covers
+# more than `armed`: during bring-up and during a send the radio IS on, and
+# showing "off" there reads as though the toggle had failed.
 ON_STATES = ("idle", "waking", "armed", "switching", "unreachable", "sending")
 
 
@@ -43,7 +42,7 @@ def _environ():
 
 
 def _spawn(argv, done=None):
-    """Lance une commande sans bloquer la boucle GTK."""
+    """Runs a command without blocking the GTK loop."""
     try:
         proc = Gio.Subprocess.new(
             argv,
@@ -69,12 +68,12 @@ def available():
 
 
 def nudge(state, detail=""):
-    """État optimiste, écrit par le clic et non par le démon.
+    """An optimistic state, written by the click rather than by the daemon.
 
-    Allumer la radio prend une vingtaine de secondes. Sans ça, l'interrupteur
-    garde son ancien libellé pendant plusieurs sondages après le clic, ce qui
-    le fait passer pour cassé — et donc recliquer, ce qui est exactement la
-    course que le verrou du démon existe pour empêcher.
+    Turning the radio on takes some twenty seconds. Without this the switch
+    keeps its old label for several polls after the click, which makes it look
+    broken -- and so gets clicked again, which is exactly the race the daemon's
+    lock exists to prevent.
     """
     try:
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
@@ -99,7 +98,7 @@ class AirDrop:
         for callback in self._listeners:
             callback(self.state, self.detail)
 
-    # --- lecture --------------------------------------------------------
+    # --- reading --------------------------------------------------------
     def refresh(self):
         if not available():
             self._set("missing", "")
@@ -127,7 +126,7 @@ class AirDrop:
     def is_on(self):
         return self.state in ON_STATES
 
-    # --- écriture -------------------------------------------------------
+    # --- writing --------------------------------------------------------
     def toggle(self):
         if not available():
             return
@@ -138,7 +137,7 @@ class AirDrop:
         else:
             nudge("waking", "notch")
             self._set("waking", "")
-            # setsid : le démon doit survivre au notch, pas en être l'enfant.
+            # setsid: the daemon must outlive the notch, not be its child.
             _spawn(["setsid", "-f", "env"] + _environ() + [DAEMON, "run"])
 
     def send(self, paths, receiver=None):
@@ -152,17 +151,17 @@ class AirDrop:
         return True
 
 
-# --- decouverte des cibles ------------------------------------------------
-# `airdropd send` cible par defaut `.[0].id` du rapport, c'est-a-dire le
-# premier qui a repondu au mDNS. Avec AirDrop en « Tout le monde », tout
-# appareil Apple a portee est candidat, donc ce defaut envoie au hasard.
-# AIRDROP_RECEIVER prend un id de ce meme rapport et leve l'ambiguite.
+# --- target discovery -----------------------------------------------------
+# `airdropd send` targets `.[0].id` of the report by default, that is whichever
+# peer answered mDNS first. With AirDrop set to Everyone, any Apple device in
+# range is a candidate, so that default sends at random. AIRDROP_RECEIVER takes
+# an id from that same report and removes the ambiguity.
 REPORT = os.path.join(HOME, ".opendrop/discover.last.json")
 OPENDROP = os.path.join(HOME, "owl/.venv-opendrop/bin/opendrop")
 
-# Le rapport contient TOUJOURS notre propre receveur, puisqu'on s'annonce
-# nous-memes pendant qu'on browse. L'y laisser proposerait « s'envoyer a
-# soi-meme » comme premiere cible.
+# The report ALWAYS contains our own receiver, since we advertise ourselves
+# while browsing. Leaving it in would offer "send to yourself" as the first
+# target.
 def _own_name():
     try:
         return os.uname().nodename
@@ -171,7 +170,7 @@ def _own_name():
 
 
 def receivers():
-    """[(id, nom)] des cibles vues au dernier browse, nous exclus."""
+    """[(id, name)] of the targets seen on the last browse, ourselves excluded."""
     try:
         with open(REPORT) as handle:
             data = json.load(handle)
@@ -189,11 +188,11 @@ def receivers():
 
 
 def discover(done):
-    """Relance un browse, puis rend la main avec la liste a jour.
+    """Runs another browse, then returns with the list up to date.
 
-    SIGINT et pas SIGTERM : `opendrop find` tourne indefiniment et n'ecrit son
-    rapport que sur interruption - un SIGTERM le tue avant, et le rapport
-    reste celui du browse precedent.
+    SIGINT and not SIGTERM: `opendrop find` runs indefinitely and only writes
+    its report on interruption -- a SIGTERM kills it first, and the report
+    stays the one from the previous browse.
     """
     if not os.access(OPENDROP, os.X_OK):
         done([])

@@ -1,17 +1,17 @@
-"""Mise en forme légère d'une note, dans la zone d'édition elle-même.
+"""Light formatting of a note, inside the editable view itself.
 
-Le fichier reste du texte brut : on ne transforme rien, on habille. Les
-marqueurs restent visibles mais grisés — les masquer dans une zone
-éditable fait sauter le curseur de façon déroutante, puisqu'il traverse
-alors des caractères qu'on ne voit pas.
+The file stays plain text: nothing is transformed, it is only dressed up. The
+markers stay visible but greyed -- hiding them in an editable view makes the
+caret jump in a disorienting way, since it then crosses characters nobody can
+see.
 
-Trois conventions, pas une de plus :
-    # Titre        (jusqu'à ###)
-    **gras**
-    - [ ] tâche    et sa forme cochée - [x]
+Three conventions, not one more:
+    # Heading      (up to ###)
+    **bold**
+    - [ ] task     and its ticked form - [x]
 
-Le même module sert à l'app et à l'onglet du notch : la note a exactement
-la même tête des deux côtés.
+The same module serves the app and the notch's tab: the note looks exactly the
+same on both sides.
 """
 
 import re
@@ -27,10 +27,10 @@ TODO = re.compile(r"^(\s*)(- \[)([ xX])(\])(\s?)")
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 BULLET = re.compile(r"^(\s*)([-*])(\s+)")
 
-# Échelles des titres, relatives à la police de la note.
+# Heading scales, relative to the note's font.
 SCALE = {1: 1.45, 2: 1.20, 3: 1.06}
 
-# Opacité des marqueurs (`#`, `**`, `- [ ]`) et du texte d'une tâche faite.
+# Opacity of the markers (`#`, `**`, `- [ ]`) and of a done task's text.
 DIM = 0.42
 DONE = 0.55
 
@@ -43,7 +43,7 @@ def _shade(rgba, alpha):
 
 
 class Markup:
-    """Habille un `Gtk.TextBuffer` et sait basculer ses cases à cocher."""
+    """Dresses up a `Gtk.TextBuffer` and knows how to toggle its checkboxes."""
 
     def __init__(self, buffer):
         self.buffer = buffer
@@ -67,9 +67,9 @@ class Markup:
 
     # --- couleurs -------------------------------------------------------
     def follow(self, widget):
-        """Reprend la couleur de texte effective du widget, et en tire les
-        gris. Rien n'est écrit en dur : au changement de fond d'écran,
-        matugen repeint GTK et les marqueurs suivent."""
+        """Takes the widget's effective text colour and derives the greys from
+        it. Nothing is hard-coded: on a wallpaper change matugen repaints GTK
+        and the markers follow."""
         base = widget.get_color()
         self.tags["marker"].props.foreground_rgba = _shade(base, DIM)
         self.tags["done"].props.foreground_rgba = _shade(base, DONE)
@@ -91,7 +91,7 @@ class Markup:
 
     def _iter(self, line, offset):
         it = self.buffer.get_iter_at_line(line)[1]
-        # `forward_chars` traverserait la fin de ligne : on borne d'abord.
+        # `forward_chars` would cross the line end: bound it first.
         limit = it.copy()
         if not limit.ends_line():
             limit.forward_to_line_end()
@@ -140,24 +140,24 @@ class Markup:
             self._tag("bold", number, found.start() + 2, found.end() - 2)
             self._tag("marker", number, found.end() - 2, found.end())
 
-    # --- cases à cocher -------------------------------------------------
+    # --- checkboxes -----------------------------------------------------
     def checkbox_at(self, it):
-        """Le numéro de ligne si `it` tombe sur une case, sinon None.
-        Cliquer ailleurs sur la ligne ne coche rien : on veut pouvoir
-        placer son curseur dans le texte d'une tâche."""
+        """The line number if `it` lands on a box, otherwise None. Clicking
+        elsewhere on the line ticks nothing: the caret has to be placeable
+        inside a task's text."""
         line = it.get_line()
         text = self._text_of(line)
         found = TODO.match(text)
         if not found:
             return None
         offset = it.get_line_offset()
-        # De `- [` à `]` inclus : la cible est petite mais franche.
+        # From `- [` through `]` inclusive: a small but unambiguous target.
         if found.start(2) <= offset <= found.end(4):
             return line
         return None
 
     def toggle(self, line):
-        """Bascule `[ ]` et `[x]` sur place, sans toucher au reste."""
+        """Toggles `[ ]` and `[x]` in place, touching nothing else."""
         text = self._text_of(line)
         found = TODO.match(text)
         if not found:
@@ -178,8 +178,8 @@ class Markup:
 
 
 def attach(view):
-    """Branche le rendu sur une vue : habillage à chaque frappe, et clic
-    sur une case pour la cocher. Renvoie le `Markup`."""
+    """Wires the rendering to a view: dress up on every keystroke, and a click
+    on a box to tick it. Returns the `Markup`."""
     buffer = view.get_buffer()
     markup = Markup(buffer)
 

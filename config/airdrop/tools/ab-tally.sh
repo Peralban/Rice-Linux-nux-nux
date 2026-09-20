@@ -1,9 +1,9 @@
 #!/bin/bash
-# Compte les transferts d'une phase A/B en lisant le journal du demon.
+# Counts the transfers of an A/B phase by reading the daemon's log.
 #
 # "demarre"  = opendrop a commence a lire un corps d'upload
 # "complet"  = POST /Upload a repondu 200
-# Un transfert demarre et jamais complete est un BLOCAGE, le mode d'echec
+# A transfer started and never completed is a STALL, the failure mode
 # qu'on cherche a departager entre strategies.
 L=/run/user/1000/airdropd/airdropd.log
 s=$(grep -c 'Receiving file' "$L" 2>/dev/null); s=${s:-0}

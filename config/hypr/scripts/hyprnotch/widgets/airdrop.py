@@ -1,8 +1,8 @@
-"""AirDrop : un interrupteur, un état, et l'étagère comme source d'envoi.
+"""AirDrop: one switch, one state, and the shelf as the source of a send.
 
-L'étagère à fichiers du notch est déjà l'endroit où l'on dépose ce qu'on
-veut faire circuler. Envoyer vers un iPhone n'est qu'une sortie de plus,
-au même titre que le glisser-déposer.
+The notch's file shelf is already where you drop whatever you want to move
+around. Sending to an iPhone is one more way out of it, no different in kind
+from drag and drop.
 """
 
 import gi
@@ -81,10 +81,10 @@ class AirDropWidget(Gtk.Box):
         self.backend = backend.AirDrop()
         self.backend.connect(self._on_state)
 
-        # Deux pages plutot qu'une feuille flottante : choisir un destinataire
-        # remplace tout le panneau, comme le panneau de partage d'iOS prend
-        # l'ecran. Une popover aurait laisse l'etat et l'interrupteur visibles
-        # derriere, ce qui invite a cliquer ailleurs au milieu d'un envoi.
+        # Two pages rather than a floating sheet: picking a recipient replaces
+        # the whole panel, the way the iOS share sheet takes the screen. A
+        # popover would have left the state and the switch visible behind it,
+        # which invites a click elsewhere in the middle of a send.
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         self.stack.set_transition_duration(160)
@@ -95,13 +95,13 @@ class AirDropWidget(Gtk.Box):
     def _build_main(self):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
 
-        # Le logo en grand comme point focal, a la maniere du panneau AirDrop
-        # d'Apple : on vient ici pour savoir si la machine est visible, et la
-        # reponse doit se lire avant tout texte. Les commandes vont en bas.
+        # The logo large, as the focal point, the way Apple's AirDrop pane
+        # does it: you come here to learn whether the machine is visible, and
+        # that answer must read before any text. Controls go at the bottom.
         #
-        # Icone du theme plutot qu'un glyphe de police : les ondes
-        # concentriques SONT la marque AirDrop, et un codepoint Nerd Font
-        # absent se serait affiche en carre vide.
+        # A theme icon rather than a font glyph: the concentric waves ARE the
+        # AirDrop mark, and a missing Nerd Font codepoint would have rendered
+        # as an empty box.
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
                        valign=Gtk.Align.CENTER, vexpand=True,
                        halign=Gtk.Align.CENTER)
@@ -126,10 +126,10 @@ class AirDropWidget(Gtk.Box):
 
         page.append(self._sep())
 
-        # Barre de commandes, en bas. L'interrupteur ne gouverne QUE la
-        # reception : envoyer n'a pas besoin qu'on soit deja visible, puisque
-        # `airdropd send` monte la pile lui-meme quand rien ne tourne. Les
-        # griser ensemble laissait croire qu'il fallait s'allumer d'abord.
+        # The control bar, at the bottom. The switch governs RECEIVING ONLY:
+        # sending does not need us to be visible already, since `airdropd
+        # send` brings the stack up itself when nothing is running. Greying
+        # them together implied you had to switch on first.
         bar = Gtk.Box(spacing=8)
         self.switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.switch.connect("state-set", self._on_switch)
@@ -150,8 +150,8 @@ class AirDropWidget(Gtk.Box):
     def _build_picker(self):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
 
-        # Une fleche seule, sans libelle : le geste est evident et un mot de
-        # plus aurait pousse la liste vers le bas.
+        # A bare arrow, no label: the gesture is obvious and one more word
+        # would have pushed the list further down.
         back = Gtk.Button(icon_name="go-previous-symbolic",
                           halign=Gtk.Align.START)
         back.add_css_class("nk-link")
@@ -175,21 +175,21 @@ class AirDropWidget(Gtk.Box):
         line.set_size_request(-1, 1)
         return line
 
-    # --- cycle de vie ---------------------------------------------------
+    # --- lifecycle ------------------------------------------------------
     def set_live(self, live):
         if live and self.tick is None:
             self.tick = GLib.timeout_add(TICK_MS, self._on_tick)
             self.backend.refresh()
-            # L'étagère a pu changer pendant qu'on regardait ailleurs, et
-            # l'état du démon, lui, n'aura pas bougé : sans ce rendu le
-            # bouton d'envoi resterait grisé devant une étagère pleine.
+            # The shelf may have changed while we were looking elsewhere,
+            # and the daemon's state will not have moved: without this render
+            # the send button would stay greyed in front of a full shelf.
             self._render()
         elif not live and self.tick is not None:
             GLib.source_remove(self.tick)
             self.tick = None
-            # Quitter la page pendant que le selecteur est ouvert laisserait
-            # la machine diffuser en BLE sans que rien ne le dise, et on
-            # reviendrait plus tard sur une liste perimee.
+            # Leaving the page while the picker is open would leave the
+            # machine advertising over BLE with nothing saying so, and we
+            # would come back later to a stale list.
             self._beacon_off()
             self.stack.set_visible_child_name("main")
 
@@ -201,20 +201,19 @@ class AirDropWidget(Gtk.Box):
 
     # --- interactions ---------------------------------------------------
     def _on_switch(self, _switch, wanted):
-        # On ne bascule que si l'utilisateur a vraiment changé d'avis :
-        # _render() repositionne l'interrupteur à chaque sondage, et sans
-        # cette garde chaque rafraîchissement relancerait le démon.
+        # Only toggle when the user actually changed their mind: _render()
+        # repositions the switch on every poll, and without this guard each
+        # refresh would restart the daemon.
         if wanted != self.backend.is_on:
             self.backend.toggle()
             self._render()
         return True
 
-    # --- le selecteur de destinataire ------------------------------------
-    # Chercher AVANT de vouloir envoyer n'avait pas de sens : la liste etait
-    # vide la plupart du temps, et « aucun appareil trouve » occupait la
-    # place en permanence pour ne rien dire. La recherche part donc au clic
-    # sur Envoyer, et ses resultats s'affichent dans une feuille, comme le
-    # panneau de partage d'iOS.
+    # --- the recipient picker --------------------------------------------
+    # Browsing BEFORE anyone wants to send made no sense: the list was empty
+    # most of the time, and "no device found" held the space permanently to
+    # say nothing. So the browse starts on the Send click, and its results
+    # appear in a sheet, the way the iOS share sheet does.
 
     def _on_send(self, _button):
         paths = list(self.shelf.paths) if self.shelf is not None else []
@@ -225,27 +224,27 @@ class AirDropWidget(Gtk.Box):
         self._open_picker()
 
     def _open_picker(self):
-        # LE SIGNAL BLE D'ABORD. Un iPhone ne s'annonce comme receveur qu'une
-        # fois reveille par une annonce Continuity, et celle que `airdropd
-        # send` enregistre par btmgmt n'atteint pas le telephone sur cette
-        # carte. Sans ca la recherche ne trouve rien et l'echec ressemble a un
-        # probleme de telephone. Mesure : 29 s sans resultat avec btmgmt seul,
-        # trouve en 8 s avec cette annonce-ci.
+        # THE BLE WAKE FIRST. An iPhone only advertises itself as a receiver
+        # once a Continuity advert has woken it, and the one `airdropd send`
+        # registers through btmgmt does not reach the phone on this card.
+        # Without this the browse finds nothing and the failure looks like a
+        # phone problem. Measured: 29 s with no result on btmgmt alone, found
+        # in 8 s with this advert.
         self.beacon.start()
         self.stack.set_visible_child_name("pick")
 
-        # LA RECHERCHE A BESOIN D'awdl0, pas seulement l'envoi. `opendrop find`
-        # ouvre l'interface, donc la pile eteinte il echoue instantanement et
-        # le selecteur affiche « aucun appareil » sans avoir rien cherche.
-        # L'envoi, lui, monte sa propre pile - d'ou l'interrupteur decouple du
-        # bouton mais pas de la decouverte.
+        # THE BROWSE NEEDS awdl0, not only the send. `opendrop find` opens the
+        # interface, so with the stack down it fails instantly and the picker
+        # shows "no device" without having looked at all. A send brings up its
+        # own stack -- hence the switch being decoupled from the button but not
+        # from discovery.
         if self.backend.is_on:
             self._fill_picker(busy=True)
-            # 3 s avant de chercher, comme `airdropd send` en accorde au
-            # telephone : l'annonce vient de partir et il lui faut ce temps
-            # pour commencer a s'annoncer. Chercher tout de suite rend
-            # « aucun appareil » alors qu'il etait simplement en retard, ce
-            # qui donne l'impression qu'il faut rearmer Tout le monde.
+            # 3 s before browsing, the same grace `airdropd send` gives the
+            # phone: the advert has only just gone out and it needs that long
+            # to start advertising back. Browsing immediately returns "no
+            # device" when the phone was merely late, which reads as though
+            # Everyone needed re-arming.
             GLib.timeout_add_seconds(3, self._browse_now)
             return
         self._fill_picker(busy=True, label=self.s["waking"])
@@ -261,8 +260,8 @@ class AirDropWidget(Gtk.Box):
             self._fill_picker(busy=True)
             GLib.timeout_add_seconds(3, self._browse_now)
             return False
-        # ~20 s pour monter la radio, d'apres le projet amont. On laisse une
-        # marge plutot que d'abandonner sur un demarrage un peu lent.
+        # ~20 s to bring the radio up, per the upstream project. Leave some
+        # headroom rather than give up on a slightly slow start.
         if self._wake_tries > 20:
             self._targets = []
             self._fill_picker()
@@ -270,9 +269,9 @@ class AirDropWidget(Gtk.Box):
         return True
 
     def _close_picker(self):
-        # L'annonce ne sert qu'a la recherche et a la poignee de main : la
-        # laisser tourner apres ferait diffuser la machine indefiniment sans
-        # que rien dans l'interface ne le dise.
+        # The advert only serves the browse and the handshake: leaving it
+        # running afterwards would have the machine advertising indefinitely
+        # with nothing in the interface saying so.
         self.beacon.stop()
         self.stack.set_visible_child_name("main")
         self._pending = []
@@ -306,9 +305,9 @@ class AirDropWidget(Gtk.Box):
             again.connect("clicked", lambda _b: self._open_picker())
             self.pick_body.append(again)
             return
-        # Des bulles plutot que des lignes, comme le panneau de partage d'iOS :
-        # un avatar rond, le nom dessous. Un clic envoie - pas de selection
-        # puis validation, un seul geste.
+        # Bubbles rather than rows, like the iOS share sheet: a round avatar
+        # with the name under it. One click sends -- no select-then-confirm,
+        # a single gesture.
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
                            homogeneous=True, column_spacing=4,
                            row_spacing=8, min_children_per_line=2,
@@ -348,9 +347,9 @@ class AirDropWidget(Gtk.Box):
         ok = self.backend.send(paths, receiver=ident)
         self.foot.set_text(self.s["sent"] if ok else self.s["missing"])
         self._pending = []
-        # Le transfert est lance en arriere-plan : on laisse l'annonce vivre
-        # le temps de la poignee de main, sans quoi le telephone peut nous
-        # perdre entre le choix et le premier paquet.
+        # The transfer is started in the background: the advert is left alive
+        # for the handshake, without which the phone can lose us between the
+        # choice and the first packet.
         GLib.timeout_add_seconds(20, self._beacon_off)
 
     def _on_state(self, _state, _detail):
@@ -369,8 +368,8 @@ class AirDropWidget(Gtk.Box):
         self.state.set_text(self.s["states"].get(state, state))
         self.hint.set_text(self.s["hint"].get(state, ""))
 
-        # C'est le logo qui porte l'etat : eteint il reste gris, et il ne
-        # prend une couleur que pour signaler un ecart.
+        # The logo carries the state: off it stays grey, and it only takes on
+        # a colour to flag something out of the ordinary.
         for css, want in (("nk-run", state in ("idle", "armed", "sending")),
                           ("nk-busy", state in ("waking", "switching", "unreachable")),
                           ("nk-down", state in ("error", "missing"))):
@@ -379,8 +378,8 @@ class AirDropWidget(Gtk.Box):
             else:
                 self.logo.remove_css_class(css)
 
-        # PAS `on and has` : l'interrupteur est celui de la reception. Un
-        # envoi monte sa propre pile si rien ne tourne, donc le griser quand
-        # on est eteint refusait une action parfaitement valide.
+        # NOT `on and has`: the switch is the receiving one. A send brings up
+        # its own stack if nothing is running, so greying it out while we are
+        # off refused a perfectly valid action.
         has = bool(self.shelf.paths) if self.shelf is not None else False
         self.send.set_sensitive(state != "missing" and has)

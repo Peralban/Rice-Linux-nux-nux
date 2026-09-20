@@ -1,13 +1,13 @@
-"""Le magasin de notes : un dossier de fichiers, et rien d'autre.
+"""The note store: a directory of files, and nothing else.
 
-Une note est un fichier `.md` dans ~/.local/share/hyprnotes/. Pas de base
-de données, pas de format maison : tes notes restent grepables, éditables
-dans nvim, et elles survivent à l'application.
+A note is a `.md` file in ~/.local/share/hyprnotes/. No database, no
+home-grown format: the notes stay greppable, editable in nvim, and they
+outlive the application.
 
-C'est aussi le bus entre l'app et le notch. Les deux importent ce module
-et surveillent le même dossier : cocher une case dans le notch fait bouger
-un fichier, l'app le voit et se rafraîchit. Aucun démon, aucun socket —
-exactement comme le thème se propage déjà dans ce dépôt.
+It is also the bus between the app and the notch. Both import this module and
+watch the same directory: ticking a box in the notch moves a file, the app
+sees it and refreshes. No daemon, no socket -- exactly the way the theme
+already propagates in this repository.
 """
 
 import json
@@ -21,18 +21,18 @@ from gi.repository import Gio, GLib  # noqa: E402
 
 DIR = os.path.expanduser("~/.local/share/hyprnotes")
 
-# Les épingles ne peuvent pas vivre dans le texte sans le polluer : un
-# en-tête YAML dans un fichier qu'on promet « brut » serait un mensonge.
+# Pins cannot live in the text without polluting it: a YAML header in a file
+# we promise is "plain" would be a lie.
 STATE = os.path.join(DIR, "state.json")
 
 SUFFIX = ".md"
 
-# Longueur de l'aperçu affiché sous le titre dans la liste.
+# Length of the preview shown under the title in the list.
 PREVIEW = 80
 
 
 def clean(line):
-    """Retire la décoration d'une ligne pour en faire un titre lisible."""
+    """Strips a line's decoration to turn it into a readable title."""
     line = line.strip()
     line = line.lstrip("#").strip()
     for marker in ("- [ ]", "- [x]", "- [X]", "-", "*"):
@@ -43,8 +43,8 @@ def clean(line):
 
 
 class Note:
-    """Une note lue depuis le disque. Immuable : pour écrire, passe par le
-    magasin, qui sait invalider son cache."""
+    """A note read from disk. Immutable: to write, go through the store, which
+    knows how to invalidate its cache."""
 
     __slots__ = ("id", "path", "text", "mtime")
 
@@ -59,8 +59,8 @@ class Note:
         return self.text.splitlines()
 
     def title(self, fallback="Sans titre"):
-        """La première ligne qui porte quelque chose, débarrassée de sa
-        décoration. Pas de champ « titre » : le texte se suffit."""
+        """The first line that carries anything, stripped of its decoration.
+        There is no "title" field: the text is enough on its own."""
         for line in self.lines:
             cleaned = clean(line)
             if cleaned:
@@ -68,7 +68,7 @@ class Note:
         return fallback
 
     def preview(self):
-        """La suite du texte, une fois le titre retiré."""
+        """The rest of the text, once the title is removed."""
         seen_title = False
         for line in self.lines:
             cleaned = clean(line)
@@ -86,20 +86,19 @@ class Note:
 
 
 class Store:
-    """Lit et écrit les notes, et prévient quand le dossier bouge."""
+    """Reads and writes notes, and reports when the directory changes."""
 
     def __init__(self):
         self.monitors = []
         self.listeners = []
-        # Ce qu'on vient d'écrire soi-même : le moniteur va nous le renvoyer,
-        # et rafraîchir sur son propre écho ferait sauter le curseur en
-        # pleine frappe.
+        # What we have just written ourselves: the monitor will hand it back,
+        # and refreshing on our own echo would make the caret jump mid-typing.
         self.echo = {}
         os.makedirs(DIR, exist_ok=True)
 
     # --- lecture --------------------------------------------------------
     def list(self):
-        """Toutes les notes : épinglées d'abord, puis les plus récentes."""
+        """Every note: pinned ones first, then the most recent."""
         notes = []
         try:
             names = os.listdir(DIR)
@@ -130,12 +129,12 @@ class Store:
     def exists(self, note_id):
         return bool(note_id) and os.path.exists(self.path_of(note_id))
 
-    # --- écriture -------------------------------------------------------
+    # --- writing --------------------------------------------------------
     def write(self, note_id, text):
         path = self.path_of(note_id)
         try:
-            # Écriture atomique : une note à moitié écrite, lue par le notch
-            # au même instant, s'afficherait tronquée.
+            # Atomic write: a half-written note, read by the notch at that
+            # same instant, would display truncated.
             tmp = path + ".part"
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(text)
@@ -146,8 +145,8 @@ class Store:
             return False
 
     def create(self, text=""):
-        """Crée une note et renvoie son identifiant. L'horodatage suffit :
-        deux notes créées la même seconde sont départagées par un suffixe."""
+        """Creates a note and returns its identifier. The timestamp is enough:
+        two notes created in the same second are told apart by a suffix."""
         base = time.strftime("%Y%m%d-%H%M%S")
         note_id = base
         bump = 1
@@ -169,7 +168,7 @@ class Store:
         self._write_state(state)
         return True
 
-    # --- épingles -------------------------------------------------------
+    # --- pins -----------------------------------------------------------
     def _state(self):
         try:
             with open(STATE, encoding="utf-8") as fh:
@@ -192,7 +191,7 @@ class Store:
             pass
 
     def pinned(self):
-        """Les notes gardées en haut de la liste. Plusieurs, sans limite."""
+        """The notes kept at the top of the list. Several, with no limit."""
         state = self._state()
         return [i for i in state.get("pinned", []) if isinstance(i, str)]
 
@@ -207,20 +206,20 @@ class Store:
         self._write_state(state)
 
     def notch_note(self):
-        """La note affichée dans le notch — une seule à la fois."""
+        """The note shown in the notch -- only one at a time."""
         note_id = self._state().get("notch")
         return note_id if self.exists(note_id) else None
 
     def set_notch_note(self, note_id):
-        """Épingler au notch remplace la précédente : le panneau est étroit,
-        deux notes n'y tiendraient pas."""
+        """Pinning to the notch replaces the previous one: the panel is narrow,
+        two notes would not fit."""
         state = self._state()
         state["notch"] = None if state.get("notch") == note_id else note_id
         self._write_state(state)
 
     # --- veille ---------------------------------------------------------
     def watch(self, callback):
-        """Appelle `callback()` quand le dossier change sous nos pieds."""
+        """Calls `callback()` when the directory changes under our feet."""
         self.listeners.append(callback)
         if self.monitors:
             return
@@ -242,8 +241,8 @@ class Store:
         path = gfile.get_path() or ""
         if path.endswith(".part"):
             return
-        # Notre propre écho : le contenu sur le disque est celui qu'on vient
-        # d'y mettre, personne d'autre n'a parlé.
+        # Our own echo: the content on disk is what we just put there, nobody
+        # else has spoken.
         if path in self.echo:
             try:
                 with open(path, encoding="utf-8") as fh:

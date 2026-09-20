@@ -1,16 +1,15 @@
-"""La fenêtre notch : surface layer-shell ancrée en haut, centrée.
+"""The notch window: a layer-shell surface anchored at the top, centred.
 
-Deux points ont été établis à la mesure avant d'écrire ce fichier, parce
-qu'ils décident de toute l'architecture :
+Two things were established by measurement before this file was written,
+because they decide the whole architecture:
 
-1. Une fenêtre GTK4 grandit mais ne rétrécit jamais toute seule. Seul
-   `set_default_size()` avec des valeurs explicites fait redescendre la
-   surface layer-shell. C'est la recette de `resize_to()`.
-2. `Gdk.Surface.set_input_region()` est réécrit par GTK sur Wayland. Une
-   grande surface transparente avec un trou cliquable est donc impossible :
-   la surface doit faire exactement la taille du notch visible. C'est ce
-   qui rend le survol fiable — entrer dans la surface, c'est entrer dans
-   le notch.
+1. A GTK4 window grows but never shrinks on its own. Only
+   `set_default_size()` with explicit values brings the layer-shell surface
+   back down. That is the recipe in `resize_to()`.
+2. `Gdk.Surface.set_input_region()` is overwritten by GTK on Wayland. A large
+   transparent surface with a clickable hole in it is therefore impossible:
+   the surface must be exactly the size of the visible notch. That is what
+   makes hovering reliable -- entering the surface is entering the notch.
 """
 
 import os
@@ -33,15 +32,15 @@ from ..widgets.system import SystemWidget
 from ..widgets.airdrop import AirDropWidget
 from ..widgets.notes import NotesWidget
 
-# Glyphes repris tels quels de l'ancien module mpris de la waybar, pour
-# que la pastille reste la même à l'œil.
+# Glyphs taken as they were from the old waybar mpris module, so the pill
+# still looks the same to the eye.
 DND_LOG = os.path.expanduser("~/.cache/hyprnotch/dnd.log")
 
 
 def dnd_log(message):
-    """Trace des événements de glisser-déposer. Rien d'autre n'écrit ici :
-    le fichier ne grossit qu'en cas de dépôt, et il sert à diagnostiquer
-    ce qu'une application source propose réellement."""
+    """Traces drag and drop events. Nothing else writes here: the file only
+    grows on a drop, and it exists to diagnose what a source application
+    actually offers."""
     try:
         os.makedirs(os.path.dirname(DND_LOG), exist_ok=True)
         with open(DND_LOG, "a", encoding="utf-8") as fh:
@@ -51,7 +50,7 @@ def dnd_log(message):
 
 
 def paths_from_value(value):
-    """Extrait des chemins, quelle que soit la forme reçue."""
+    """Extracts paths, whatever shape they arrive in."""
     if isinstance(value, Gdk.FileList):
         return [f.get_path() for f in value.get_files() if f.get_path()]
     if isinstance(value, Gio.File):
@@ -108,13 +107,13 @@ class Notch(Gtk.ApplicationWindow):
 
         self.open = False
         self.pinned = False
-        # Épinglé *pour écrire*, ce qui n'est pas la même chose qu'épinglé
-        # au clavier : seul le premier doit lâcher prise quand le
-        # compositeur donne le clavier ailleurs.
+        # Pinned *for typing*, which is not the same as holding the keyboard:
+        # only the former has to let go when the compositor hands the keyboard
+        # to someone else.
         self.editing = False
         self.hovered = False
-        # Dernier mode clavier demandé au compositeur. On le retient pour ne
-        # pas réémettre la requête à chaque mouvement de souris.
+        # The last keyboard mode asked of the compositor. Remembered so the
+        # request is not re-issued on every mouse movement.
         self.kb_mode = None
         self.close_source = None
         self.bar = waybar.read_bar()
@@ -126,9 +125,9 @@ class Notch(Gtk.ApplicationWindow):
         self._layer_shell()
         self._controllers()
         self.resize_to(*self.compact_size)
-        # Sans contenu (rien en lecture), aucune mise en page n'est déclenchée
-        # et la surface reste à la taille de repli de GTK, 200x200. On
-        # réaffirme la taille une fois la fenêtre posée.
+        # With no content (nothing playing) no layout is triggered at all and
+        # the surface stays at GTK's fallback size, 200x200. Reassert the size
+        # once the window is mapped.
         self.connect("map", lambda *_: self.resize_to(*self._compact_geometry()))
 
         target = Adw.CallbackAnimationTarget.new(self._on_frame)
@@ -143,9 +142,9 @@ class Notch(Gtk.ApplicationWindow):
         self.shell.add_css_class("nk-shell")
         self.shell.set_overflow(Gtk.Overflow.HIDDEN)
 
-        # Le ScrolledWindow ne sert pas à défiler : il coupe la propagation
-        # de la taille minimale, sans quoi le contenu déplié empêcherait la
-        # coque de rétrécir.
+        # The ScrolledWindow is not there to scroll: it cuts the propagation
+        # of the minimum size, without which expanded content would stop the
+        # shell from shrinking.
         self.clip = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
             vscrollbar_policy=Gtk.PolicyType.EXTERNAL,
@@ -162,11 +161,11 @@ class Notch(Gtk.ApplicationWindow):
         self.clip.set_child(self.stack)
         self.shell.append(self.clip)
 
-        # La surface monte jusqu'a y=0 et le decalage sous la barre est
-        # recree ICI, par un espaceur, au lieu d'etre une marge layer-shell.
-        # Avec la marge, la bande au-dessus du notch n'appartenait pas a la
-        # surface : amener la souris tout en haut de l'ecran en sortait, ce
-        # qui refermait le panneau alors qu'on visait justement la barre.
+        # The surface reaches up to y=0 and the offset under the bar is
+        # recreated HERE, with a spacer, instead of being a layer-shell margin.
+        # With the margin, the strip above the notch did not belong to the
+        # surface: moving the mouse to the very top of the screen left it,
+        # which closed the panel just as you were aiming for the bar.
         self.lift = Gtk.Box()
         self.lift.set_size_request(-1, self._island_top())
         holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -175,14 +174,14 @@ class Notch(Gtk.ApplicationWindow):
         self.set_child(holder)
 
     def _compact_view(self):
-        # Contenu centré, et la pastille se taille dessus : c'est ce qui la
-        # fait ressembler à l'ancien module, qui n'avait pas de largeur fixe.
+        # Content centred, and the pill sizes itself to it: that is what makes
+        # it look like the old module, which had no fixed width.
         box = Gtk.Box(spacing=7, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
         box.add_css_class("nk-pill")
         box.set_size_request(-1, self._pill_height())
 
-        # Deux entêtes possibles : la pochette quand on l'a, sinon le glyphe
-        # du lecteur. Un seul des deux est visible à la fois.
+        # Two possible headers: the cover art when we have it, otherwise the
+        # player's glyph. Only one of the two is ever visible.
         self.pulse = Gtk.Label()
         self.pulse.add_css_class("nk-glyph")
 
@@ -213,15 +212,15 @@ class Notch(Gtk.ApplicationWindow):
         return box
 
     def _pill_height(self):
-        """Hauteur utile à l'intérieur de la coque.
+        """Usable height inside the shell.
 
-        La coque a une bordure d'un pixel en haut et en bas : demander la
-        hauteur pleine décalait tout le contenu d'un pixel vers le bas, ce
-        qui se voyait surtout sur la vignette."""
+        The shell has a one-pixel border top and bottom: asking for the full
+        height shifted all the content down by a pixel, which showed up most
+        on the thumbnail."""
         return max(1, self._island_height() - 2 * SHELL_BORDER)
 
     def _thumb_size(self):
-        """Une vignette qui tient dans la bulle, sans la faire grandir."""
+        """A thumbnail that fits the pill without making it grow."""
         return max(12, self._pill_height() - 6)
 
     def _expanded_view(self):
@@ -291,8 +290,8 @@ class Notch(Gtk.ApplicationWindow):
         LS.set_layer(self, layer)
         LS.set_anchor(self, LS.Edge.TOP, True)
         self._set_kb(LS.KeyboardMode.NONE)
-        # Zone exclusive à -1 : le notch ignore celle de la waybar et se
-        # pose sur la même bande, à la place du module mpris.
+        # Exclusive zone at -1: the notch ignores waybar's own and sits on the
+        # same strip, in the place of the mpris module.
         LS.set_exclusive_zone(self, -1 if self.config.get(
             "notch", "in_bar", default=True) else 0)
         LS.set_margin(self, LS.Edge.TOP, 0)
@@ -312,9 +311,9 @@ class Notch(Gtk.ApplicationWindow):
         motion.connect("leave", self._on_leave)
         self.add_controller(motion)
 
-        # On accepte les trois façons dont une source peut proposer des
-        # fichiers : la liste GTK, un fichier seul, ou du text/uri-list brut.
-        # Se limiter à GdkFileList suffit pour Nautilus mais pas pour tout.
+        # Accept all three ways a source can offer files: the GTK list, a lone
+        # file, or raw text/uri-list. Taking only GdkFileList is enough for
+        # Nautilus but not for everything.
         drop = Gtk.DropTarget(actions=Gdk.DragAction.COPY)
         drop.set_gtypes([Gdk.FileList, Gio.File, GObject.TYPE_STRING])
         drop.set_preload(True)
@@ -328,7 +327,7 @@ class Notch(Gtk.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
-        # Perte du focus clavier : le compositeur a servi quelqu'un d'autre.
+        # Keyboard focus lost: the compositor has served someone else.
         self.connect("notify::is-active", self._on_active)
 
     def _on_drag_accept(self, _target, drop):
@@ -357,13 +356,13 @@ class Notch(Gtk.ApplicationWindow):
         self.show_page("files")
         return True
 
-    # --- taille et animation --------------------------------------------
+    # --- size and animation ---------------------------------------------
     def resize_to(self, width, height):
-        """La seule combinaison qui fasse aussi bien grandir que rétrécir
-        une surface layer-shell (mesuré, voir l'en-tête).
+        """The only combination that both grows and shrinks a layer-shell
+        surface (measured, see the header).
 
-        La fenêtre est plus haute que la coque de la hauteur de l'espaceur
-        qui remplace l'ancienne marge layer-shell."""
+        The window is taller than the shell by the height of the spacer that
+        replaces the old layer-shell margin."""
         self.shell.set_size_request(width, height)
         self.set_default_size(width, height + self._island_top())
 
@@ -382,9 +381,9 @@ class Notch(Gtk.ApplicationWindow):
         self.stack.set_visible_child_name("expanded")
         self._set_live(True)
         if instant:
-            # Pendant un glisser-déposer, on ouvre d'un coup : vingt
-            # redimensionnements de la surface sous le curseur pendant que
-            # le compositeur suit le drag, c'est chercher les ennuis.
+            # During a drag and drop, open in one step: twenty resizes of the
+            # surface under the cursor while the compositor is tracking the
+            # drag is asking for trouble.
             self.resize_to(*self.expanded_size)
             return
         self.anim.play()
@@ -393,13 +392,14 @@ class Notch(Gtk.ApplicationWindow):
         if not self.open or self.pinned:
             return
         self.open = False
-        # Le notch se referme : plus rien n'y attend de frappe.
+        # The notch is closing: nothing in it is waiting for a keystroke.
         self._set_kb(LS.KeyboardMode.NONE)
         self.stack.set_visible_child_name("compact")
         self._set_live(False)
-        # Le passage en fantôme attend la fin de l'animation : sinon la coque
-        # perd son fond pendant que la surface rétrécit encore, et on voit le
-        # texte du panneau flotter sur le bureau une fraction de seconde.
+        # Going ghost waits for the animation to finish: otherwise the shell
+        # loses its background while the surface is still shrinking, and the
+        # panel's text is seen floating on the desktop for a fraction of a
+        # second.
         self.anim.play()
 
     def toggle(self):
@@ -413,45 +413,45 @@ class Notch(Gtk.ApplicationWindow):
             self.expand()
 
     def _set_kb(self, mode):
-        """Une requête wayland par changement réel, pas par mouvement."""
+        """One wayland request per actual change, not per movement."""
         if self.kb_mode == mode:
             return
         self.kb_mode = mode
         LS.set_keyboard_mode(self, mode)
 
     def arm_keyboard(self, on):
-        """Le pointeur entre ou sort d'une zone de saisie.
+        """The pointer enters or leaves an input area.
 
-        En layer-shell, `ON_DEMAND` ne dit pas « prends le clavier » mais
-        « le compositeur te le donnera au prochain clic ». L'armer pendant
-        le clic arrive donc trop tard : celui-ci a déjà été tranché sous
-        l'ancien mode, et il en fallait un second pour rien. On arme au
-        survol, avant que le clic n'arrive."""
+        Under layer-shell, `ON_DEMAND` does not say "take the keyboard" but
+        "the compositor will give it to you on the next click". Arming it
+        during the click is therefore too late: that click has already been
+        resolved under the old mode, and a second one was needed for nothing.
+        We arm on hover, before the click arrives."""
         if self.editing:
             return
         self._set_kb(LS.KeyboardMode.ON_DEMAND if on else LS.KeyboardMode.NONE)
 
     def pin_open(self):
-        """Un widget réclame le clavier — on écrit dedans. Le notch cesse de
-        se refermer au mouvement de souris tant qu'on n'a pas fait Échap."""
+        """A widget is claiming the keyboard -- something is being typed into.
+        The notch stops closing on mouse movement until Escape is pressed."""
         self.editing = True
         self.pinned = True
         self._set_kb(LS.KeyboardMode.ON_DEMAND)
 
     def _on_active(self, *_):
-        """Le compositeur vient de donner le clavier à une autre fenêtre.
+        """The compositor has just given the keyboard to another window.
 
-        Sans ça le notch restait épinglé, donc ouvert, mais sans clavier :
-        un panneau bien vivant à l'écran qui n'écoutait plus rien, et qu'il
-        fallait recliquer pour réveiller. On rend la main plutôt que de
-        mentir sur l'état."""
+        Without this the notch stayed pinned, and so open, but with no
+        keyboard: a panel very much alive on screen that listened to nothing
+        any more and had to be clicked again to wake. We let go rather than
+        lie about the state."""
         if self.props.is_active or not self.editing:
             return
         self.release_edit()
 
     def release_edit(self):
-        """Sauve la note en cours, rend le clavier, et laisse le survol
-        reprendre la main. Si la souris est déjà partie, on referme."""
+        """Saves the note being edited, gives the keyboard back, and lets
+        hover take over again. If the mouse has already left, close."""
         if not self.editing:
             return
         self.w_notes.flush()
@@ -531,14 +531,14 @@ class Notch(Gtk.ApplicationWindow):
             return True
         return False
 
-    # --- rendu ----------------------------------------------------------
+    # --- rendering ------------------------------------------------------
     def refresh(self):
         self.w_media.refresh()
         self._refresh_compact()
 
     def _refresh_compact(self):
-        """Sans lecture en cours, la pastille ne montre rien et ne dessine
-        rien : il reste une zone invisible, toujours survolable."""
+        """With nothing playing the pill shows nothing and draws nothing: what
+        remains is an invisible area, still hoverable."""
         active = self.media.active
         self.c_title.set_visible(active)
         if active:
@@ -567,18 +567,18 @@ class Notch(Gtk.ApplicationWindow):
         return self.bar.get("margin_top", 1) + 1 + offset
 
     def _island_height(self):
-        """Hauteur d'une bulle de la waybar, mesurée sur la barre elle-même."""
+        """Height of a waybar pill, measured on the bar itself."""
         if self.island:
             return self.island["height"]
         return self.compact_size[1]
 
     def _compact_geometry(self):
-        """La pastille épouse son texte, bornée pour ne jamais manger la
-        barre ni devenir introuvable au survol.
+        """The pill fits its text, bounded so it never eats the bar nor
+        becomes impossible to find by hovering.
 
-        On mesure via une mise en page Pango neuve, pas via measure() :
-        une étiquette avec ellipsize annonce une largeur naturelle tronquée,
-        et la pastille se serait coupée toute seule."""
+        Measured through a fresh Pango layout rather than measure(): a label
+        with ellipsize reports a truncated natural width, and the pill would
+        have cut itself short."""
         _min_h, natural, _a, _b = self.compact.measure(Gtk.Orientation.VERTICAL, -1)
         height = max(natural, self._island_height(), 1)
         if not self.media.active:
@@ -598,9 +598,9 @@ class Notch(Gtk.ApplicationWindow):
         return max(COMPACT_MIN, min(COMPACT_MAX, width)), height
 
     def _refresh_thumb(self, track):
-        """La pochette remplace le glyphe quand le lecteur en fournit une.
-        Sans pochette — beaucoup de sources n'en publient pas — on garde le
-        logo de l'application."""
+        """The cover art replaces the glyph when the player provides one. With
+        no cover art -- many sources publish none -- we keep the application's
+        logo."""
         key = track.art_url or track.trackid
         if key == self.thumb_for:
             return
@@ -628,29 +628,29 @@ class Notch(Gtk.ApplicationWindow):
             self.shell.remove_css_class("nk-ghost")
 
     def _align_to_bar(self):
-        """Reprend la hauteur et la position d'une bulle de la waybar."""
+        """Takes the height and position of one of waybar's pills."""
         island = waybar.island_metrics()
         if island is None:
-            # La barre redémarre : on garde l'alignement courant plutôt que
-            # de retomber sur une valeur par défaut.
+            # The bar is restarting: keep the current alignment rather than
+            # fall back on a default value.
             return False
         self.bar = waybar.read_bar()
         self.island = island
         self.compact.set_size_request(-1, self._pill_height())
-        # L'espaceur porte le décalage, plus la marge layer-shell : c'est lui
-        # qu'il faut réajuster quand la barre change de hauteur.
+        # The spacer carries the offset, not the layer-shell margin: it is the
+        # spacer that has to be readjusted when the bar changes height.
         self.lift.set_size_request(-1, self._island_top())
         if not self.open:
             self.resize_to(*self._compact_geometry())
         return False
 
     def reload_theme(self):
-        """HyprSettings vient peut-être de changer la barre : on relit ses
-        mesures et on se réaligne dessus.
+        """HyprSettings may just have changed the bar: re-read its metrics and
+        realign to them.
 
-        Le fichier change avant que la waybar ne redémarre, donc au premier
-        passage elle a encore son ancienne taille. On repasse pendant
-        quelques secondes, le temps qu'elle se réaffiche."""
+        The file changes before waybar restarts, so on the first pass it still
+        has its old size. We come back for a few seconds, long enough for it
+        to reappear."""
         self.w_notes.reload_theme()
         self._align_to_bar()
         self._realign_left = 20

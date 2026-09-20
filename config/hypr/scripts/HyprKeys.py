@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Éditeur graphique des raccourcis Hyprland (bilingue FR / EN).
+"""Graphical editor for Hyprland's keybindings (bilingual FR / EN).
 
-Lit et réécrit ~/.config/hypr/configs/keybinds.conf en préservant
-commentaires, ordre et mise en forme du fichier.
+Reads and rewrites ~/.config/hypr/configs/keybinds.conf, preserving the
+file's comments, ordering and formatting.
 """
 
 import os
@@ -111,14 +111,14 @@ def save_lang(lang):
 
 
 # --------------------------------------------------------------------------
-# Modèle : lecture / écriture du fichier
+# Model: reading and writing the file
 # --------------------------------------------------------------------------
 
 class Bind:
     __slots__ = ("index", "kind", "mods", "key", "action", "comment", "deleted", "added")
 
     def __init__(self, index, kind, mods, key, action, comment):
-        self.index = index          # ligne d'origine, ou None si ajouté
+        self.index = index          # original line, or None when added
         self.kind = kind            # bind, binde, bindm, bindl, bindel
         self.mods = mods            # "$mainMod SHIFT"
         self.key = key              # "Return"
@@ -229,7 +229,7 @@ def keyval_to_hypr(keyval):
 
 
 class ComboCapture(Gtk.Button):
-    """Bouton qui enregistre la prochaine combinaison de touches pressée."""
+    """A button that records the next key combination pressed."""
 
     def __init__(self, mods, key, on_change):
         super().__init__()
@@ -268,7 +268,7 @@ class ComboCapture(Gtk.Button):
 
         name = Gdk.keyval_name(keyval) or ""
         if name in BARE_MODIFIERS:
-            return Gdk.EVENT_STOP  # on attend une vraie touche
+            return Gdk.EVENT_STOP  # waiting for a real key
 
         if name == "Escape":
             self.listening = False
@@ -276,7 +276,7 @@ class ComboCapture(Gtk.Button):
             return Gdk.EVENT_STOP
 
         mods = [label for mask, label in MOD_ORDER if state & mask]
-        # on garde le style du fichier : $mainMod plutot que SUPER
+        # keep the file's own style: $mainMod rather than SUPER
         mods = ["$mainMod" if m == "SUPER" else m for m in mods]
 
         self.mods = " ".join(mods)
@@ -288,7 +288,7 @@ class ComboCapture(Gtk.Button):
 
 
 # --------------------------------------------------------------------------
-# Boîte d'édition
+# Edit dialog
 # --------------------------------------------------------------------------
 
 class EditDialog(Adw.Dialog):
@@ -364,7 +364,7 @@ class EditDialog(Adw.Dialog):
 
 
 # --------------------------------------------------------------------------
-# Fenêtre principale
+# Main window
 # --------------------------------------------------------------------------
 
 class KeysWindow(Adw.ApplicationWindow):

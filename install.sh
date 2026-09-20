@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Relie les fichiers du dépôt dans ~/.config, sans jamais copier.
+# Links the repository's files into ~/.config, never copying.
 #
-# Sans argument, tout est installé. Avec des noms de composants, seuls
-# ceux-là le sont : on peut donc prendre la barre sans le lanceur, ou le
-# notch sans l'écran de connexion, sans avoir à trier les liens à la main
-# après coup.
+# With no argument, everything is installed. With component names, only those
+# are: so you can take the bar without the launcher, or the notch without the
+# login screen, without having to sort the links out by hand afterwards.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,9 +11,9 @@ SRC="$REPO/config"
 DEST="${XDG_CONFIG_HOME:-$HOME/.config}"
 BACKUP="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 
-# nom | chemins dans config/ | ce que c'est
-# Un composant sans chemin n'est pas lié : il ne contient que de la
-# documentation et des correctifs à appliquer ailleurs.
+# name | paths under config/ | what it is
+# A component with no path is not linked: it holds only documentation and
+# patches to be applied elsewhere.
 COMPONENTS=(
   "hypr|hypr|Hyprland, le notch et les scripts du bureau"
   "waybar|waybar|la barre"
@@ -25,9 +24,9 @@ COMPONENTS=(
   "airdrop||AirDrop : correctifs et outils, voir config/airdrop/README.md"
 )
 
-# Ce qui casse visiblement sans son voisin. Ce ne sont pas des dépendances
-# dures - rien ne plante - mais l'un sans l'autre donne un résultat qui
-# ressemble à une installation ratée, donc on le dit.
+# What visibly breaks without its neighbour. These are not hard dependencies -
+# nothing crashes - but one without the other gives a result that looks like a
+# failed install, so it is worth saying.
 declare -A SUGGESTS=(
   [waybar]="matugen"
   [hypr]="matugen waybar"
@@ -49,8 +48,8 @@ EOF
   done
   cat <<EOF
 
-  --list    n'affiche que cette liste
-  --dry-run montre ce qui serait lié, sans rien toucher
+  --list    print this list only
+  --dry-run show what would be linked, touching nothing
 
 L'écran de connexion SDDM est à part, il demande root :
   system/sddm/install-sddm.sh
@@ -89,9 +88,9 @@ fi
 
 linked=0 saved=0 skipped=0
 
-# `find` parcourt le disque, pas l'index git : sans les exclusions plus bas
-# on lie les artefacts que .gitignore écarte pourtant, et ~/.config se
-# retrouve avec des __pycache__ pointant vers le dépôt.
+# `find` walks the disk, not the git index: without the exclusions below we
+# link the artefacts .gitignore does exclude, and ~/.config ends up with
+# __pycache__ directories pointing into the repository.
 link_tree() {
   local sub="$1" root="$SRC/$sub"
   [ -d "$root" ] || return 0
@@ -99,7 +98,7 @@ link_tree() {
     local rel="${file#"$SRC"/}" target
     target="$DEST/$rel"
 
-    # déjà le bon lien : rien à faire
+    # already the right link: nothing to do
     if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$file")" ]; then
       skipped=$((skipped + 1)); continue
     fi
@@ -110,7 +109,7 @@ link_tree() {
 
     mkdir -p "$(dirname "$target")"
 
-    # on met de côté ce qu'on remplace, sans jamais l'écraser
+    # set aside whatever is being replaced, never overwrite it
     if [ -e "$target" ] || [ -L "$target" ]; then
       mkdir -p "$BACKUP/$(dirname "$rel")"
       mv "$target" "$BACKUP/$rel"
@@ -133,11 +132,11 @@ for name in "${WANTED[@]}"; do
   fi
   for sub in $paths; do link_tree "$sub"; done
 
-  # On ne suggère que ce qui n'a pas été demandé dans le même appel.
+  # Only suggest what was not asked for in the same invocation.
   for dep in ${SUGGESTS[$name]:-}; do
     case " ${WANTED[*]} " in
       *" $dep "*) ;;
-      *) echo "note : $name se présente mal sans $dep" ;;
+      *) echo "note: $name looks wrong without $dep" ;;
     esac
   done
 done

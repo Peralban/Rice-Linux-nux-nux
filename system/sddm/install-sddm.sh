@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installe le theme SDDM "silent" configure comme l'ecran de verrouillage.
-# Necessite sudo : le theme et la config de SDDM vivent hors du home.
+# Installs the "silent" SDDM theme, configured like the lock screen.
+# Needs sudo: the theme and SDDM's config live outside the home directory.
 set -euo pipefail
 
 THEME=/usr/share/sddm/themes/silent
@@ -10,8 +10,8 @@ WALL="$(readlink -f "$HOME/.config/hypr/current_wallpaper")"
 [ -d "$THEME" ] || { echo "Theme absent. Installe-le : yay -S sddm-silent-theme" >&2; exit 1; }
 [ -f "$WALL" ] || { echo "Aucun fond d'ecran courant. Choisis-en un avec Super+W." >&2; exit 1; }
 
-# le service sddm tourne sous l'utilisateur sddm, qui ne peut pas lire /home :
-# le fond doit donc etre copie dans un emplacement lisible par tous.
+# the sddm service runs as the sddm user, which cannot read /home: the
+# background therefore has to be copied somewhere world-readable.
 sudo install -Dm644 "$WALL" "$THEME/backgrounds/wallpaper.png"
 sudo install -Dm644 "$HERE/hyprlock.conf" "$THEME/configs/hyprlock.conf"
 sudo sed -i 's|^ConfigFile=.*|ConfigFile=configs/hyprlock.conf|' "$THEME/metadata.desktop"

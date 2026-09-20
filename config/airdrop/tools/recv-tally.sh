@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Compte les receptions par ISSUE, pas seulement par nombre.
+# Counts receptions by OUTCOME, not merely by count.
 #
-# Trois issues distinctes, qui n'ont pas la meme signification :
-#   direct   le transfert est alle au bout tout seul
-#   sauve    il a cale, le delai d'expiration a coupe, et les blocs recus
-#            contenaient quand meme le fichier complet
-#   partiel  il a cale trop tot ; le fichier est incomplet et suffixe
-#            .partial plutot que livre comme bon
+# Three distinct outcomes, which do not mean the same thing:
+#   direct    the transfer ran to completion on its own
+#   salvaged  it stalled, the read timeout cut it off, and the blocks received
+#             still contained the complete file
+#   partial   it stalled too early; the file is incomplete and suffixed
+#             .partial rather than delivered as good
 L=/run/user/1000/airdropd/airdropd.log
 [ -r "$L" ] || { echo "pas de journal : le demon tourne-t-il ?"; exit 1; }
 start=$(grep -c 'Receiving file'   "$L"); start=${start:-0}

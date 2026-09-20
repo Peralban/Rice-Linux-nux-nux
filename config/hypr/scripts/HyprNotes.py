@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""HyprNotes — des notes, en fichiers texte (bilingue FR / EN).
+"""HyprNotes -- notes, as text files (bilingual FR / EN).
 
-Une barre latérale qui s'ouvre au bord de l'écran, une note à l'écran, et
-un dossier de `.md` dans ~/.local/share/hyprnotes/ comme seule vérité.
-Le notch lit le même dossier : une note épinglée s'y affiche et s'y coche.
+A sidebar that opens at the edge of the screen, one note on screen, and a
+directory of `.md` files in ~/.local/share/hyprnotes/ as the only truth. The
+notch reads the same directory: a pinned note is shown and ticked there.
 
-Comme HyprWhale, il n'a pas de palette propre — il hérite de celle de GTK,
-que matugen régénère à chaque changement de fond d'écran.
+Like HyprWhale, it has no palette of its own -- it inherits GTK's, which
+matugen regenerates on every wallpaper change.
 
-Signaux, comme le reste du dépôt :
-  SIGUSR1  recharge la palette (matugen)
-  SIGUSR2  ouvre / cache la fenêtre
+Signals, as elsewhere in this repository:
+  SIGUSR1  reload the palette (matugen)
+  SIGUSR2  show / hide the window
 
-La bascule du raccourci ne passe pas par `pkill`, contrairement au notch :
-une ligne « pkill -f HyprNotes.py || HyprNotes.py » contient elle-même le
-motif dans son repli, si bien que pkill signale le shell qui l'exécute, le
-tue, et le repli n'est jamais atteint. On s'appuie plutôt sur l'unicité
-d'instance de GApplication : relancer le script réveille l'instance en
-place, et c'est `do_activate` qui bascule.
+The shortcut's toggle does not go through `pkill`, unlike the notch's: a line
+like "pkill -f HyprNotes.py || HyprNotes.py" contains the pattern inside its
+own fallback, so pkill signals the shell running it, kills it, and the
+fallback is never reached. We rely on GApplication's single-instance
+behaviour instead: relaunching the script wakes the instance already there,
+and `do_activate` is what toggles.
 """
 
 import os
@@ -47,14 +47,14 @@ class App(Adw.Application):
             self.win = NotesWindow(self)
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self._theme)
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2, self._toggle)
-            # La fenêtre se cache au lieu de mourir : le raccourci la
-            # rappelle instantanément, sans relire le dossier.
+            # The window hides instead of dying: the shortcut brings it back
+            # instantly, without re-reading the directory.
             self.hold()
             self.win.set_visible(True)
             self.win.present()
             return
-        # Deuxième appui : le script relancé n'ouvre pas un second
-        # processus, il réactive celui-ci. C'est donc ici qu'on bascule.
+        # Second press: the relaunched script does not open a second process,
+        # it reactivates this one. So this is where the toggle happens.
         self.win.toggle_window()
 
     def _theme(self):

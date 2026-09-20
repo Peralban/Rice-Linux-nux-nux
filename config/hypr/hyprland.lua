@@ -1,9 +1,9 @@
--- Configuration Hyprland au format Lua.
+-- Hyprland configuration, in Lua.
 --
--- Portage de hyprland.conf et de ses six fichiers sources, en prevision de
--- Hyprland 0.57 qui supprime le format .conf. Tant que la 0.56 est en place,
--- ce fichier reste hors de ~/.config/hypr/ : Hyprland prefere le Lua au .conf
--- des qu'il le trouve.
+-- A port of hyprland.conf and its six source files, in anticipation of
+-- Hyprland 0.57 dropping the .conf format. While 0.56 is still in place this
+-- file stays outside ~/.config/hypr/: Hyprland prefers Lua over the .conf as
+-- soon as it finds one.
 --
 -- Pour basculer :   cp hyprland.lua ~/.config/hypr/
 -- Pour revenir :    rm ~/.config/hypr/hyprland.lua
@@ -11,8 +11,8 @@
 --------------------------------------------------------------------------
 -- COULEURS
 --------------------------------------------------------------------------
--- On relit le colors.conf que matugen regenere a chaque fond d'ecran,
--- plutot que de figer des valeurs ici : une seule source de verite.
+-- We re-read the colors.conf matugen regenerates on every wallpaper, rather
+-- than freezing values here: one source of truth.
 
 local function read_colors(path)
     local colors = {}
@@ -37,11 +37,11 @@ local outline_variant = C.outline_variant or "rgba(4e4639ff)"
 --------------------------------------------------------------------------
 -- REGLAGES
 --------------------------------------------------------------------------
--- HyprSettings ecrit dans looknfeel.conf et input.conf. Si ce fichier
--- figeait ses propres valeurs, il les ecraserait a chaque demarrage et le
--- panneau semblerait « oublier » tout ce qu'on y regle. On relit donc les
--- .conf, comme on relit deja colors.conf pour la palette : une seule
--- source de verite, et le panneau fait foi.
+-- HyprSettings writes to looknfeel.conf and input.conf. If this file froze
+-- values of its own it would overwrite them on every startup and the panel
+-- would appear to "forget" everything set in it. So we re-read the .conf
+-- files, just as colors.conf is already re-read for the palette: one source
+-- of truth, and the panel is authoritative.
 
 local configs = os.getenv("HOME") .. "/.config/hypr/configs"
 
@@ -52,7 +52,7 @@ local function read_conf(path)
         return values
     end
     for raw in file:lines() do
-        -- Lua 5.4 : la variable de boucle est constante, on recopie.
+        -- Lua 5.4: the loop variable is constant, so copy it.
         local line = raw:gsub("#.*$", "")
         local section = line:match("^%s*([%w_]+)%s*{%s*$")
         if section then
@@ -93,10 +93,10 @@ local function str(t, key, fallback)
     return value
 end
 
--- Les ecarts sont un type « css_gap ». Le parseur veut un entier ou une
--- table aux quatre cotes NOMMES : la forme tableau { 2, 3, 3, 3 } est
--- acceptee sans broncher puis ignoree, et les ecarts retombent a zero.
--- C'est ce qui arrivait a gaps_out depuis le passage au Lua.
+-- Gaps are a "css_gap" type. The parser wants either an integer or a table
+-- with the four sides NAMED: the array form { 2, 3, 3, 3 } is accepted without
+-- complaint, then ignored, and the gaps fall back to zero. That is what had
+-- been happening to gaps_out ever since the move to Lua.
 local function gaps(t, key, fallback)
     local value = t[key]
     if value == nil or value == "" then return fallback end
@@ -161,8 +161,8 @@ hl.config({
             { top = 2, right = 3, bottom = 3, left = 3 }),
         border_size = num(LOOK, "general:border_size", 1),
         col = {
-            -- Les bordures viennent de la palette, pas du .conf : il n'y
-            -- ecrit que « $outline », que seul le parseur legacy resout.
+            -- Borders come from the palette, not the .conf: that only writes
+            -- "$outline", which only the legacy parser resolves.
             active_border = outline,
             inactive_border = outline_variant,
         },
@@ -296,7 +296,7 @@ hl.window_rule({
 hl.window_rule({ name = "save-dialog", match = { title = "^(Save As|Save a File|Pick Files)$" }, float = true, size = "50% 60%", center = true })
 hl.window_rule({ name = "open-dialog", match = { initial_title = "(Open Files)" }, float = true, size = "70% 60%" })
 
--- les quatre panneaux maison (les notes se tuilent, pas de regle)
+-- the four in-house panels (notes tile, so no rule)
 hl.window_rule({ name = "hyprsettings", match = { class = "dev.local.HyprSettings" }, float = true, size = "580 720", center = true })
 hl.window_rule({ name = "hyprkeys", match = { class = "dev.local.HyprKeys" }, float = true, size = "680 780", center = true })
 hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, float = true, move = "1178 66" })
@@ -370,7 +370,7 @@ hl.bind(mod .. " + SHIFT + right", hl.dsp.window.resize({ x = 50, y = 0, relativ
 hl.bind(mod .. " + SHIFT + up", hl.dsp.window.resize({ x = 0, y = -50, relative = true }), { repeating = true })
 hl.bind(mod .. " + SHIFT + down", hl.dsp.window.resize({ x = 0, y = 50, relative = true }), { repeating = true })
 
--- espaces de travail
+-- workspaces
 for i = 1, 10 do
     local key = i % 10
     hl.bind(mod .. " + " .. key, hl.dsp.focus({ workspace = i }))

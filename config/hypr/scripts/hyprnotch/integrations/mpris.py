@@ -1,8 +1,8 @@
-"""MPRIS via Playerctl.
+"""MPRIS through Playerctl.
 
-Tout passe par des signaux : on ne demande jamais « quel est le morceau ? »
-en boucle. Seule la position n'a pas de signal utilisable — elle est donc
-sondée, mais uniquement quand le panneau est ouvert (voir MediaWidget).
+Everything goes through signals: we never ask "what is the track?" in a loop.
+Position alone has no usable signal -- so it is polled, but only while the
+panel is open (see MediaWidget).
 """
 
 import hashlib
@@ -20,7 +20,7 @@ CACHE = os.path.expanduser("~/.cache/hyprnotch/art")
 # Les lecteurs qu'on refuse de suivre : ils publient un MPRIS parasite.
 IGNORED = ("kdeconnect", "playerctld")
 
-# Playerctl expose des enums : leur str() donne un entier, pas un nom.
+# Playerctl exposes enums: their str() gives an integer, not a name.
 STATUS = {
     Playerctl.PlaybackStatus.PLAYING: "playing",
     Playerctl.PlaybackStatus.PAUSED: "paused",
@@ -52,8 +52,8 @@ class Track:
 
 
 class Media:
-    """Suit le lecteur actif et prévient l'UI. `on_update` est appelé dans
-    la boucle principale GTK."""
+    """Follows the active player and notifies the UI. `on_update` is called on
+    the GTK main loop."""
 
     def __init__(self, on_update):
         self.on_update = on_update
@@ -94,7 +94,7 @@ class Media:
         player.connect("shuffle", lambda p, v: self._sync(p))
         player.connect("loop-status", lambda p, v: self._sync(p))
         self.manager.manage_player(player)
-        # Un lecteur qui joue prend la main sur un lecteur en pause.
+        # A player that is playing takes precedence over a paused one.
         if self.player is None or status_of(player) == "playing":
             self.player = player
         self._sync(self.player)
@@ -103,7 +103,7 @@ class Media:
     def _sync(self, player):
         if player is None:
             return
-        # Le lecteur qui vient de passer en lecture devient l'actif.
+        # The player that has just started playing becomes the active one.
         if status_of(player) == "playing":
             self.player = player
         if player is not self.player:
@@ -213,8 +213,8 @@ class Media:
 
 
 def fetch_art(url, done):
-    """Télécharge la pochette une fois, la garde en cache, puis rappelle
-    `done(chemin)` dans la boucle GTK."""
+    """Downloads the cover art once, caches it, then calls back `done(path)`
+    on the GTK loop."""
     if not url:
         return
     if url.startswith("file://"):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Panneau de réglages d'apparence pour Hyprland (bilingue FR / EN).
+"""Appearance settings panel for Hyprland (bilingual FR / EN).
 
-Lit et écrit ~/.config/hypr/configs/looknfeel.conf, et applique chaque
-changement en direct via `hyprctl keyword`.
+Reads and writes ~/.config/hypr/configs/looknfeel.conf, and applies every
+change live through `hyprctl keyword`.
 """
 
 import io
@@ -27,7 +27,7 @@ WAYBAR_CONF = os.path.realpath(os.path.expanduser("~/.config/waybar/config"))
 WAYBAR_MODULES = os.path.expanduser("~/.config/waybar/Modules")
 WAYBAR_STYLE = os.path.realpath(os.path.expanduser("~/.config/waybar/style.css"))
 
-# le CSS accepte des mots-cles : on les ramene a leur equivalent numerique
+# CSS accepts keywords: bring them back to their numeric equivalent
 WEIGHT_WORDS = {
     "thin": "100", "extralight": "200", "light": "300", "normal": "400",
     "regular": "400", "medium": "500", "semibold": "600", "bold": "700",
@@ -35,7 +35,7 @@ WEIGHT_WORDS = {
 }
 
 
-# une bulle = un bloc CSS portant le fond semi-transparent caracteristique
+# one pill = one CSS block carrying the characteristic semi-transparent background
 BUBBLE = re.compile(r"background-color: alpha\(@surface_container, 0\.75\);.*?\}", re.S)
 
 
@@ -115,7 +115,7 @@ WB_KEYS = {
 
 
 def read_waybar():
-    """La config waybar est du JSON commenté : on cible les clés au regex."""
+    """waybar's config is commented JSON: the keys are targeted by regex."""
     out = {}
     try:
         text = io.open(WAYBAR_CONF, encoding="utf-8").read()
@@ -171,8 +171,8 @@ def write_waybar(values):
 
 NOTCH_CONF = os.path.expanduser("~/.config/hypr/scripts/.hyprnotch.json")
 
-# Les réglages du notch ne vivent pas dans hyprland.conf mais dans son
-# propre JSON. Ce qui suit « notch: » est le chemin dans ce fichier.
+# The notch's settings do not live in hyprland.conf but in its own JSON.
+# Whatever follows "notch:" is the path inside that file.
 NOTCH_KEYS = (
     "notch:widgets.media",
     "notch:widgets.calendar",
@@ -209,8 +209,8 @@ def read_notch():
 
 
 def write_notch(values):
-    """Réécrit le JSON du notch sans perdre les clés qu'on n'affiche pas :
-    l'utilisateur peut y avoir mis une géométrie ou un moniteur à la main."""
+    """Rewrites the notch's JSON without losing the keys we do not show: the
+    user may have put a geometry or a monitor in there by hand."""
     touched = [p for p in NOTCH_KEYS if p in values]
     if not touched:
         return False
@@ -237,11 +237,11 @@ def write_notch(values):
 
 
 def restart_notch():
-    """Les onglets se construisent au démarrage : un signal ne suffirait pas
-    à faire apparaître ou disparaître l'un d'eux, il faut relancer.
+    """The tabs are built at startup: a signal would not be enough to make one
+    of them appear or disappear, it has to be restarted.
 
-    Le motif porte des crochets pour que `pkill` ne se reconnaisse pas
-    lui-même dans sa propre ligne de commande."""
+    The pattern carries brackets so that `pkill` does not match itself in its
+    own command line."""
     subprocess.run(["pkill", "-f", "HyprNotch[.]py"], capture_output=True, check=False)
     try:
         subprocess.Popen([os.path.expanduser("~/.config/hypr/scripts/HyprNotch.py")],
@@ -251,7 +251,7 @@ def restart_notch():
 
 
 def file_for(path):
-    """Chaque reglage vit dans son fichier d'origine."""
+    """Every setting lives in the file it came from."""
     return INPUT_CONF if path.startswith("input:") else CONF
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
 
@@ -358,7 +358,7 @@ T = {
     },
 }
 
-# (clé de traduction, chemin hyprland, min, max, pas, décimales)
+# (translation key, hyprland path, min, max, step, decimals)
 LAYOUT = [
     ("g_spacing", [
         ("slider", "gaps_in", "general:gaps_in", 0, 40, 1, 0),
@@ -409,11 +409,11 @@ LAYOUT = [
 
 
 # --------------------------------------------------------------------------
-# Langue : détection, persistance, drapeaux
+# Language: detection, persistence, flags
 # --------------------------------------------------------------------------
 
 def has_emoji_font():
-    """Les drapeaux ne s'affichent que si une police couvre les indicateurs régionaux."""
+    """Flags only render if some font covers the regional indicators."""
     try:
         result = subprocess.run(["fc-list", ":charset=1F1F7"],
                                 capture_output=True, text=True, timeout=2)
@@ -452,10 +452,10 @@ def save_lang(lang):
         pass
 
 
-# Les composants qui lisent LANG_FILE une seule fois, a leur demarrage. Le
-# fichier ne suffit donc pas : sans relance, changer la langue ici ne changeait
-# que cette fenetre, et le notch restait dans l'ancienne jusqu'a la prochaine
-# session - ce qui donne l'impression que le reglage ne marche pas.
+# The components that read LANG_FILE once, at startup. The file alone is
+# therefore not enough: without a restart, changing the language here only
+# changed this window, and the notch stayed in the old one until the next
+# session -- which reads as though the setting did not work.
 LANG_CONSUMERS = (
     os.path.expanduser("~/.config/hypr/scripts/HyprNotch.py"),
     os.path.expanduser("~/.config/hypr/scripts/HyprWhale.py"),
@@ -463,11 +463,11 @@ LANG_CONSUMERS = (
 
 
 def _pids_running(script):
-    """PID des processus dont la ligne de commande contient ce chemin.
+    """PIDs of the processes whose command line contains this path.
 
-    On lit /proc plutot que d'appeler pkill : un motif assez large pour
-    attraper "python .../HyprNotch.py" attrape aussi le shell qui le cherche,
-    et se tue lui-meme. Ici on compare des chemins exacts, et on s'exclut.
+    We read /proc rather than call pkill: a pattern wide enough to catch
+    "python .../HyprNotch.py" also catches the shell looking for it, and kills
+    itself. Here we compare exact paths, and exclude ourselves.
     """
     me = os.getpid()
     found = []
@@ -485,7 +485,7 @@ def _pids_running(script):
 
 
 def restart_lang_consumers():
-    """Relance ceux qui tournent, laisse dormir ceux qui ne tournent pas."""
+    """Restarts the ones that are running, lets the others sleep."""
     for script in LANG_CONSUMERS:
         pids = _pids_running(script)
         if not pids:
@@ -495,8 +495,8 @@ def restart_lang_consumers():
                 os.kill(pid, signal.SIGTERM)
             except OSError:
                 pass
-        # Laisser la surface layer-shell se retirer avant d'en redemander une :
-        # deux notchs qui se chevauchent une seconde, c'est visible.
+        # Let the layer-shell surface withdraw before asking for another: two
+        # notches overlapping for a second is visible.
         GLib.timeout_add(400, _respawn, script)
 
 
@@ -509,7 +509,7 @@ def _respawn(script):
 
 
 # --------------------------------------------------------------------------
-# Lecture / écriture du fichier de config (conscient des blocs imbriqués)
+# Reading and writing the config file (aware of nested blocks)
 # --------------------------------------------------------------------------
 
 def _walk(lines):
@@ -584,10 +584,10 @@ LUA_CONF = os.path.expanduser("~/.config/hypr/hyprland.lua")
 
 
 def lua_parser():
-    """Hyprland préfère hyprland.lua au .conf dès qu'il le trouve, et son
-    parseur Lua refuse net `hyprctl keyword` : « keyword can't work with
-    non-legacy parsers. Use eval. » Sans cette bascule, plus aucun curseur
-    du panneau ne se voyait à l'écran."""
+    """Hyprland prefers hyprland.lua over the .conf as soon as it finds one,
+    and its Lua parser refuses `hyprctl keyword` outright: "keyword can't work
+    with non-legacy parsers. Use eval." Without this switch, not one slider in
+    the panel showed up on screen."""
     return os.path.exists(LUA_CONF)
 
 
@@ -603,11 +603,11 @@ def _lua_scalar(value):
 
 
 def lua_config(path, value):
-    """Traduit « decoration:blur:size = 8 » en la table imbriquée que
-    `hl.config` attend."""
+    """Translates "decoration:blur:size = 8" into the nested table `hl.config`
+    expects."""
     if path.startswith("general:gaps"):
-        # Type « css_gap » : le parseur Lua veut les quatre côtés nommés,
-        # pas la chaîne « haut,droite,bas,gauche » héritée du .conf.
+        # The "css_gap" type: the Lua parser wants the four sides named, not
+        # the "top,right,bottom,left" string inherited from the .conf.
         sides = [part.strip() for part in str(value).split(",")]
         if len(sides) == 1:
             body = _lua_scalar(sides[0])
@@ -675,7 +675,7 @@ class SettingsWindow(Adw.ApplicationWindow):
 
         self.rebuild()
 
-    # -- sélecteur de langue ----------------------------------------------
+    # -- language selector -------------------------------------------------
 
     def _make_lang_popover(self):
         popover = Gtk.Popover()

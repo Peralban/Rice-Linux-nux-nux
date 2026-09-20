@@ -1,11 +1,11 @@
-"""Onglet notes : la note épinglée, cochable depuis le notch.
+"""Notes tab: the pinned note, tickable from the notch.
 
-Ne possède rien. La note vit dans ~/.local/share/hyprnotes/, HyprNotes
-écrit dans le même dossier, et les deux se surveillent : cocher ici change
-le fichier, la fenêtre le voit et se rafraîchit. L'inverse aussi.
+Owns nothing. The note lives in ~/.local/share/hyprnotes/, HyprNotes writes to
+the same directory, and the two watch each other: ticking here changes the
+file, the window sees it and refreshes. The other way round too.
 
-Le panneau est étroit — c'est une vue d'appoint pour une liste de tâches,
-pas un éditeur. Mais elle est éditable : taper ici écrit sur le disque.
+The panel is narrow -- this is a secondary view for a task list, not an editor.
+But it is editable: typing here writes to disk.
 """
 
 import os
@@ -16,7 +16,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-# Le paquet hyprnotes est à côté, dans ~/.config/hypr/scripts/.
+# The hyprnotes package sits next door, in ~/.config/hypr/scripts/.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
@@ -37,11 +37,11 @@ class NotesWidget(Gtk.Box):
     def __init__(self, lang="fr", on_edit=None, on_arm=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.s = STRINGS.get(lang, STRINGS["fr"])
-        # Prévient le notch qu'on écrit : il doit s'épingler, sinon il se
-        # referme au premier mouvement de souris et mange la frappe.
+        # Tells the notch something is being typed: it has to pin itself, or
+        # it closes on the first mouse movement and eats the keystroke.
         self.on_edit = on_edit
-        # Prévient le notch que le pointeur survole le texte, pour qu'il
-        # ouvre le clavier avant le clic plutôt que pendant.
+        # Tells the notch the pointer is over the text, so it opens the
+        # keyboard before the click rather than during it.
         self.on_arm = on_arm
         self.store = Store()
         self.current = None
@@ -64,21 +64,21 @@ class NotesWidget(Gtk.Box):
         self.text.add_css_class("nk-note")
         self.markup = markup.attach(self.text)
         self.text.get_buffer().connect("changed", self._on_typed)
-        # Survoler le texte arme le clavier ; le clic, lui, épingle et
-        # prend le focus. Les deux gestes sont distincts parce que le
-        # compositeur tranche le sort d'un clic avec le mode qui était en
-        # vigueur avant lui : armer pendant le clic coûtait un second clic.
+        # Hovering the text arms the keyboard; the click pins and takes focus.
+        # The two gestures are distinct because the compositor resolves a
+        # click's fate under the mode in force before it: arming during the
+        # click cost a second click.
         hover = Gtk.EventControllerMotion()
         hover.connect("enter", lambda *_: self._arm(True))
-        # `motion` autant que `enter` : apres avoir rendu le clavier, le
-        # pointeur peut etre reste sur le texte, et aucune entree ne
-        # surviendrait plus. `_set_kb` ignore les repetitions.
+        # `motion` as much as `enter`: after giving the keyboard back the
+        # pointer may have stayed over the text, and no enter event would ever
+        # come again. `_set_kb` ignores repeats.
         hover.connect("motion", lambda *_: self._arm(True))
         hover.connect("leave", lambda *_: self._arm(False))
         self.text.add_controller(hover)
 
-        # Phase de capture pour passer avant la case à cocher, sans lui
-        # voler l'événement.
+        # Capture phase, to run before the checkbox without stealing its
+        # event.
         claim = Gtk.GestureClick()
         claim.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         claim.connect("pressed", self._on_click)
@@ -107,8 +107,8 @@ class NotesWidget(Gtk.Box):
 
     # --- cycle de vie ---------------------------------------------------
     def set_live(self, live):
-        """L'onglet devient visible, ou cesse de l'être. On relit en entrant
-        et on écrit en sortant : rien ne se perd en fermant le notch."""
+        """The tab becomes visible, or stops being so. We re-read on entry and
+        write on exit: nothing is lost by closing the notch."""
         self.live = live
         if live:
             self.refresh()
@@ -145,7 +145,7 @@ class NotesWidget(Gtk.Box):
         buffer.place_cursor(buffer.get_iter_at_offset(
             min(offset, buffer.get_char_count())))
 
-    # --- écriture -------------------------------------------------------
+    # --- writing --------------------------------------------------------
     def _arm(self, on):
         if self.on_arm:
             self.on_arm(on)

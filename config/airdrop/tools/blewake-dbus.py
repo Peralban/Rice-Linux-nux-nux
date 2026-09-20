@@ -55,8 +55,8 @@ class Advertisement(dbus.service.Object):
 def main():
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
-    # La reference est LOAD-BEARING : sans elle Python collecte l'objet,
-    # son chemin D-Bus disparait, et BlueZ relache l'annonce sans un mot.
+    # THE REFERENCE IS LOAD-BEARING: without it Python collects the object,
+    # its D-Bus path disappears, and BlueZ drops the advert without a word.
     adv = Advertisement(bus, PATH)
     manager = dbus.Interface(bus.get_object("org.bluez", ADAPTER),
                              "org.bluez.LEAdvertisingManager1")

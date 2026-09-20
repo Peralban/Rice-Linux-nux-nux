@@ -1,7 +1,7 @@
-"""Widget calendrier : mois courant, jour mis en avant, prochain événement.
+"""Calendar widget: the current month, today highlighted, the next event.
 
-Les événements viennent d'un fichier JSON optionnel — le notch n'impose
-aucun agenda. La forme attendue :
+Events come from an optional JSON file -- the notch imposes no calendar of its
+own. The expected shape:
 
     [{"date": "2026-09-10", "title": "Weekly melo",
       "start": "10:00", "end": "11:00"}]

@@ -1,8 +1,8 @@
-"""Assemblage : thème, service média, fenêtre.
+"""Assembly: theme, media service, window.
 
-Signaux, comme le reste du dépôt :
-  SIGUSR1  recharge la palette (matugen)
-  SIGUSR2  ouvre / ferme le notch (raccourci clavier)
+Signals, as elsewhere in this repository:
+  SIGUSR1  reload the palette (matugen)
+  SIGUSR2  open / close the notch (keyboard shortcut)
 """
 
 import signal

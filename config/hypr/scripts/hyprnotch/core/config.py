@@ -1,8 +1,8 @@
-"""Configuration du notch.
+"""The notch's configuration.
 
-Le fichier vit hors du dépôt (~/.config/hypr/scripts/.hyprnotch.json) : c'est
-un réglage machine, pas une personnalisation versionnée. Tout est optionnel,
-les valeurs manquantes retombent sur DEFAULTS.
+The file lives outside the repository (~/.config/hypr/scripts/.hyprnotch.json):
+it is a per-machine setting, not a versioned customisation. Everything is
+optional, and missing values fall back on DEFAULTS.
 """
 
 import json
@@ -37,8 +37,8 @@ DEFAULTS = {
         "notes": True,
     },
     "theme": {
-        # Palette Material You produite par matugen. Une seule source de
-        # vérité pour tout le bureau : on lit le fichier de la waybar.
+        # The Material You palette matugen produces. One source of truth for
+        # the whole desktop: we read waybar's file.
         "colors": "~/.config/waybar/colors.css",
         "follow_system": True,
     },
@@ -76,8 +76,8 @@ class Config:
         return node
 
     def write_default(self):
-        """Écrit un fichier commenté la première fois, pour que l'utilisateur
-        voie ce qu'il peut changer."""
+        """Writes a commented file the first time round, so the user can see
+        what there is to change."""
         if os.path.exists(PATH):
             return
         try:
@@ -90,7 +90,7 @@ class Config:
 
 
 def lang():
-    """Même fichier de langue que HyprSettings / HyprWhale."""
+    """The same language file as HyprSettings / HyprWhale."""
     try:
         with open(LANG_FILE, encoding="utf-8") as fh:
             value = fh.read().strip()

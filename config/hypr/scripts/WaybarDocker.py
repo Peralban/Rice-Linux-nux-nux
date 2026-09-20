@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Module waybar compact pour Docker : icône + nombre de conteneurs actifs.
+"""A compact waybar module for Docker: icon plus the number of running
+containers.
 
-Sort du JSON pour waybar ("return-type": "json").
-Reste silencieux si Docker n'est pas installé, pour que le module disparaisse.
+Emits JSON for waybar ("return-type": "json").
+Stays silent if Docker is not installed, so the module disappears.
 """
 
 import json
@@ -22,7 +23,7 @@ def docker(*args, timeout=4):
 
 def main():
     if shutil.which("docker") is None:
-        return  # module masqué
+        return  # module hidden
 
     try:
         info = docker("info")

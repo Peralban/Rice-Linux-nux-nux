@@ -1,11 +1,11 @@
-"""La fenêtre de HyprNotes : une barre latérale, une note.
+"""HyprNotes' window: one sidebar, one note.
 
-La barre latérale flotte au-dessus du texte plutôt que de le pousser
-(`Adw.OverlaySplitView` replié). Elle s'ouvre de trois façons — la souris
-au bord gauche, Ctrl+B, le bouton d'en-tête — et distingue les deux : au
-survol elle est passagère et se referme quand la souris repart, au clavier
-elle reste jusqu'à ce qu'on la referme. Même logique que le notch, qui
-sépare déjà `open` de `pinned`.
+The sidebar floats over the text rather than pushing it
+(`Adw.OverlaySplitView` collapsed). It opens three ways -- the mouse at the
+left edge, Ctrl+B, the header button -- and tells two of them apart: on hover
+it is transient and closes when the mouse leaves, from the keyboard it stays
+until closed. The same logic as the notch, which already separates `open`
+from `pinned`.
 """
 
 import os
@@ -22,9 +22,9 @@ from .store import Store, clean
 
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
 
-# Délai avant d'écrire sur le disque, après la dernière frappe.
+# Delay before writing to disk, measured from the last keystroke.
 SAVE_MS = 500
-# Largeur de la bande sensible au bord gauche, et anti-clignotement.
+# Width of the sensitive strip at the left edge, and anti-flicker.
 EDGE_PX = 6
 OPEN_MS = 120
 CLOSE_MS = 220
@@ -98,9 +98,9 @@ def lang():
 
 
 def stamp(mtime):
-    """Une date courte : l'heure aujourd'hui, le jour cette année, sinon
-    la date complète. Lire « 14:32 » vaut mieux que « 15/09/2026 14:32 »
-    quand la note est d'il y a dix minutes."""
+    """A short date: the time today, the day this year, otherwise the full
+    date. Reading "14:32" beats "15/09/2026 14:32" when the note is ten
+    minutes old."""
     when = GLib.DateTime.new_from_unix_local(int(mtime))
     now = GLib.DateTime.new_now_local()
     if when.get_ymd() == now.get_ymd():
@@ -111,7 +111,7 @@ def stamp(mtime):
 
 
 class NoteRow(Gtk.ListBoxRow):
-    """Une bulle de la liste : titre, aperçu, date, et les deux épingles."""
+    """One row of the list: title, preview, date, and the two pins."""
 
     def __init__(self, note, strings, pinned, in_notch, on_pin, on_notch):
         super().__init__()
@@ -193,9 +193,9 @@ class NotesWindow(Adw.ApplicationWindow):
 
         self._bind_keys()
         self._bind_edge()
-        # GTK4 detruit la fenetre par defaut sur `close-request` : apres un
-        # clic sur la croix, le processus restait vivant mais le raccourci
-        # n'avait plus rien a rappeler. On cache, on ne detruit jamais.
+        # GTK4 destroys the window by default on `close-request`: after a
+        # click on the cross the process stayed alive but the shortcut had
+        # nothing left to bring back. We hide, we never destroy.
         self.connect("close-request", self._on_close_request)
 
         self.store.watch(self._on_disk_change)
@@ -278,15 +278,15 @@ class NotesWindow(Adw.ApplicationWindow):
         self.add_controller(keys)
 
     def _bind_edge(self):
-        """La souris au bord gauche ouvre la barre. Le contrôleur est posé
-        sur la fenêtre en phase de capture : sinon la zone de texte avale
-        le mouvement avant qu'on le voie."""
+        """The mouse at the left edge opens the sidebar. The controller sits on
+        the window in the capture phase: otherwise the text view swallows the
+        motion before we see it."""
         motion = Gtk.EventControllerMotion()
         motion.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         motion.connect("motion", self._on_motion)
         self.add_controller(motion)
 
-    # --- barre latérale -------------------------------------------------
+    # --- sidebar --------------------------------------------------------
     def toggle_sidebar(self):
         if self.split.get_show_sidebar():
             self.close_sidebar()
@@ -428,8 +428,8 @@ class NotesWindow(Adw.ApplicationWindow):
         return False
 
     def flush(self):
-        """Écrit la note courante si elle a changé. Appelé avant tout ce
-        qui pourrait la perdre : changer de note, fermer, supprimer."""
+        """Writes the current note if it changed. Called before anything that
+        could lose it: switching notes, closing, deleting."""
         if not self.dirty or self.current is None:
             return
         buffer = self.text.get_buffer()
@@ -462,11 +462,11 @@ class NotesWindow(Adw.ApplicationWindow):
         self.open_note(notes[0].id if notes else self.store.create())
         self.toasts.add_toast(Adw.Toast(title=self.s["deleted"], timeout=2))
 
-    # --- événements extérieurs ------------------------------------------
+    # --- outside events -------------------------------------------------
     def _on_disk_change(self):
-        """Le notch a écrit, ou nvim, ou une synchro. La liste suit toujours ;
-        la note ouverte, seulement si on n'est pas en train de la taper —
-        on ne va pas écraser une frappe en cours."""
+        """The notch wrote, or nvim, or a sync. The list always follows; the
+        open note only if it is not being typed into -- we are not going to
+        overwrite a keystroke in progress."""
         self.reload_list()
         if self.dirty or self.current is None:
             return
@@ -477,7 +477,7 @@ class NotesWindow(Adw.ApplicationWindow):
         start, end = buffer.get_bounds()
         if buffer.get_text(start, end, False) == note.text:
             return
-        # Garder la place du curseur : la note a bougé, pas l'intention.
+        # Keep the caret where it was: the note moved, not the intent.
         offset = buffer.get_property("cursor-position")
         buffer.set_enable_undo(False)
         buffer.set_text(note.text)
@@ -520,13 +520,13 @@ class NotesWindow(Adw.ApplicationWindow):
         self.set_visible(False)
 
     def reload_theme(self):
-        """Appelé sur SIGUSR1, quand matugen a régénéré la palette."""
+        """Called on SIGUSR1, once matugen has regenerated the palette."""
         Gtk.Settings.get_default().reset_property("gtk-theme-name")
         self.markup.follow(self.text)
         self.markup.apply()
 
     def toggle_window(self):
-        """SIGUSR2 : le raccourci ouvre, puis cache."""
+        """SIGUSR2: the shortcut opens, then hides."""
         if self.get_visible():
             self.close_window()
         else:

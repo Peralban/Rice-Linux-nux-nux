@@ -1,7 +1,7 @@
-"""Widget média : pochette, titre, progression, contrôles.
+"""Media widget: cover art, title, progress, controls.
 
-Ne connaît rien à Spotify. Il parle au service MPRIS, qui suit le lecteur
-actif, quel qu'il soit.
+Knows nothing about Spotify. It talks to the MPRIS service, which follows
+whichever player is active.
 """
 
 import gi
@@ -27,8 +27,8 @@ STRINGS = {
 }
 
 
-# La boucle a deux états actifs, pas un : « playlist » et « morceau » se
-# ressemblaient tant que seule la couleur les signalait. L'icône les sépare.
+# Loop has two active states, not one: "playlist" and "track" looked alike
+# while colour alone distinguished them. The icon separates them.
 LOOP_ICON = {
     "none": "media-playlist-repeat-symbolic",
     "playlist": "media-playlist-repeat-symbolic",
@@ -58,9 +58,9 @@ class MediaWidget(Gtk.Box):
         self.cover_frame.set_overflow(Gtk.Overflow.HIDDEN)
         self.cover = Gtk.Picture(content_fit=Gtk.ContentFit.COVER)
         self.cover.set_size_request(COVER, COVER)
-        # La taille naturelle d'une Picture est celle de la texture : sans
-        # cette coupure de propagation, la pochette grossissait ou rétrécissait
-        # selon la place laissée par le titre.
+        # A Picture's natural size is its texture's: without cutting that
+        # propagation, the cover art grew or shrank depending on the room the
+        # title left it.
         clip = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
             vscrollbar_policy=Gtk.PolicyType.EXTERNAL,
@@ -107,7 +107,7 @@ class MediaWidget(Gtk.Box):
         times.append(self.total)
         column.append(times)
 
-        # --- contrôles ---
+        # --- controls ---
         controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
                            halign=Gtk.Align.CENTER)
         controls.set_margin_top(8)
@@ -127,7 +127,7 @@ class MediaWidget(Gtk.Box):
 
         self.append(column)
 
-        # --- état vide ---
+        # --- empty state ---
         self.idle = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
                             valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, hexpand=True)
         idle_icon = Gtk.Image.new_from_icon_name("audio-x-generic-symbolic")
@@ -152,8 +152,8 @@ class MediaWidget(Gtk.Box):
 
     # --- cycle de vie ---------------------------------------------------
     def set_live(self, live):
-        """La position n'a pas de signal MPRIS : on ne la sonde que pendant
-        que le panneau est ouvert."""
+        """Position has no MPRIS signal: it is only polled while the panel is
+        open."""
         self.live = live
         if live and self.tick is None:
             self.tick = GLib.timeout_add(TICK_MS, self._on_tick)

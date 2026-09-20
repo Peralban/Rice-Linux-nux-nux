@@ -1,11 +1,11 @@
 #!/bin/bash
-# Capture une zone : enregistre le fichier ET le copie dans le presse-papier.
+# Captures a region: saves the file AND copies it to the clipboard.
 
 DIR="$HOME/Pictures/Screenshots"
 mkdir -p "$DIR"
 FILE="$DIR/$(date +%Y-%m-%d_%H-%M-%S).png"
 
-# slurp renvoie un code non nul si tu annules avec Echap
+# slurp returns a non-zero status if you cancel with Escape
 GEO=$(slurp) || exit 0
 
 grim -g "$GEO" "$FILE" || exit 1

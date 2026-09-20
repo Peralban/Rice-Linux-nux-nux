@@ -66,7 +66,7 @@ def main():
                  socket.inet_pton(socket.AF_INET6, GROUP) + struct.pack("@I", idx))
     s.settimeout(2)
 
-    print(f"ecoute mDNS sur {iface} pendant {seconds}s", flush=True)
+    print(f"listening for mDNS on {iface} for {seconds}s", flush=True)
     end = time.time() + seconds
     seen = {"q": 0, "a": 0, "pkt": 0}
     while time.time() < end:

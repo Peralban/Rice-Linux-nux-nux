@@ -1,8 +1,8 @@
-"""Étagère à fichiers : on dépose, on récupère ailleurs.
+"""File shelf: drop here, pick up elsewhere.
 
-Rien n'est copié ni déplacé. L'étagère ne retient que des chemins, et
-chaque ligne est elle-même une source de glisser-déposer : on ressort le
-fichier vers un gestionnaire, un terminal, un champ d'upload.
+Nothing is copied or moved. The shelf holds only paths, and each row is itself
+a drag source: the file goes back out to a file manager, a terminal, an upload
+field.
 """
 
 import os
@@ -17,13 +17,13 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk  # noqa: E402
 
 MAX_ITEMS = 12
 
-# Côté de la vignette. Assez grand pour reconnaître une image d'un coup
-# d'œil, assez petit pour que douze lignes tiennent dans le panneau.
+# Thumbnail side. Large enough to recognise an image at a glance, small enough
+# that twelve rows fit in the panel.
 THUMB = 24
 
-# Vignettes déjà décodées, par chemin et empreinte du fichier. L'étagère se
-# redessine entièrement à chaque dépôt : sans ça on relançait un décodage
-# par ligne et par ajout.
+# Thumbnails already decoded, keyed by path and file fingerprint. The shelf is
+# redrawn in full on every drop: without this we re-ran one decode per row per
+# addition.
 PREVIEWS = {}
 
 STRINGS = {
@@ -39,11 +39,11 @@ STRINGS = {
 
 
 def content_for(gfile):
-    """Propose le fichier sous toutes les formes qu'une cible peut vouloir.
+    """Offers the file in every shape a target might want.
 
-    `Gdk.ContentProvider.new_typed()` n'existe pas dans les liaisons Python :
-    l'appeler levait une exception dans le gestionnaire `prepare`, et aucun
-    glisser ne démarrait jamais. Il faut passer par des GValue.
+    `Gdk.ContentProvider.new_typed()` does not exist in the Python bindings:
+    calling it raised inside the `prepare` handler, and no drag ever started.
+    It has to go through GValues.
     """
     parts = []
 
@@ -62,7 +62,7 @@ def content_for(gfile):
 
 
 def stamp_of(path):
-    """Identifie une version du fichier, pas seulement son nom."""
+    """Identifies a version of the file, not merely its name."""
     try:
         info = os.stat(path)
         return (path, info.st_mtime, info.st_size)
@@ -71,8 +71,8 @@ def stamp_of(path):
 
 
 def load_preview(path, size, done):
-    """Cherche une vignette et rappelle `done(texture)` dans la boucle GTK.
-    Ne rappelle rien si le fichier n'a pas d'image à montrer."""
+    """Looks for a thumbnail and calls back `done(texture)` on the GTK loop.
+    Calls back nothing if the file has no image to show."""
     try:
         info = Gio.File.new_for_path(path).query_info(
             "standard::content-type,thumbnail::path,thumbnail::is-valid",
@@ -80,10 +80,10 @@ def load_preview(path, size, done):
     except GLib.Error:
         return
 
-    # La vignette du bureau d'abord : gratuite, déjà à la bonne taille, et
-    # elle couvre les vidéos et les PDF qu'on ne saurait pas rendre soi-même.
-    # Le drapeau compte autant que le chemin — le fichier en cache existe
-    # souvent alors qu'il ne correspond plus à ce qu'on regarde.
+    # The desktop thumbnail first: free, already the right size, and it covers
+    # the videos and PDFs we could not render ourselves. The flag matters as
+    # much as the path -- the cached file often exists when it no longer matches
+    # what we are looking at.
     if info.get_attribute_boolean("thumbnail::is-valid"):
         cached = info.get_attribute_byte_string("thumbnail::path")
         if cached and os.path.exists(cached):
@@ -95,16 +95,16 @@ def load_preview(path, size, done):
 
 
 def decode(source, size, done):
-    """Le décodage part dans un fil : mesuré à 85 ms pour un PNG de 1,6 Mo,
-    de quoi faire tressaillir le notch à chaque dépôt."""
+    """Decoding goes to a thread: measured at 85 ms for a 1.6 MB PNG, enough
+    to make the notch stutter on every drop."""
     def work():
         try:
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
                 source, size, size, True)
         except GLib.Error:
             return
-        # La texture se construit dans la boucle principale : elle touche au
-        # rendu, le fil n'a rien à y faire.
+        # The texture is built on the main loop: it touches rendering, and the
+        # worker thread has no business there.
         GLib.idle_add(lambda: done(Gdk.Texture.new_for_pixbuf(pixbuf)))
 
     threading.Thread(target=work, daemon=True).start()
@@ -127,7 +127,7 @@ class FilesWidget(Gtk.Box):
         header.append(self.clear)
         self.append(header)
 
-        # état vide : la zone pointillée, comme une vraie cible de dépôt
+        # empty state: the dashed area, like a real drop target
         self.empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
                              valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER,
                              vexpand=True)
@@ -153,7 +153,7 @@ class FilesWidget(Gtk.Box):
 
         self._render()
 
-    # --- contenu --------------------------------------------------------
+    # --- content --------------------------------------------------------
     def add(self, paths):
         for path in paths:
             if path and path not in self.paths:
@@ -190,8 +190,8 @@ class FilesWidget(Gtk.Box):
         icon = Gtk.Image(pixel_size=THUMB)
         icon.set_from_gicon(self._icon_for(gfile))
         row.append(icon)
-        # L'icône thématique sert d'attente et de repli : si le fichier n'est
-        # pas une image, ou si le décodage échoue, elle reste.
+        # The theme icon serves as both placeholder and fallback: if the file
+        # is not an image, or decoding fails, it stays.
         self._attach_preview(path, icon)
 
         name = Gtk.Label(label=os.path.basename(path), xalign=0, ellipsize=3, hexpand=True)
@@ -199,13 +199,13 @@ class FilesWidget(Gtk.Box):
         name.set_tooltip_text(path)
         row.append(name)
 
-        # ressortir le fichier
+        # send the file back out
         source = Gtk.DragSource(actions=Gdk.DragAction.COPY)
         source.connect("prepare", lambda *_: content_for(gfile))
         source.connect("drag-begin", lambda _s, drag: self._set_drag_icon(drag, icon))
         row.add_controller(source)
 
-        # ouvrir
+        # open
         click = Gtk.GestureClick()
         click.connect("released", lambda *_: self._open(gfile))
         row.add_controller(click)
@@ -223,8 +223,8 @@ class FilesWidget(Gtk.Box):
             self._show_preview(image, texture)
             return False
 
-        # Deux fois la taille affichée : les écrans HiDPI rendent la vignette
-        # a son echelle, une texture au ras du pixel y baverait.
+        # Twice the displayed size: HiDPI screens render the thumbnail at their
+        # own scale, and a pixel-exact texture would blur there.
         load_preview(path, THUMB * 2, done)
 
     @staticmethod

@@ -226,13 +226,13 @@ tooltip label{
 
 #backlight-slider highlight,
 #pulseaudio-slider highlight {
-	/* meme hauteur que la piste, sinon le remplissage deborde et parait decentre */
+	/* same height as the track, or the fill overflows and looks off-centre */
 	min-height: 6px;
 	background-color: @secondary;
 	border-radius: 5px;
 }
 
-/* ---- Module Docker (ajoute a la main) ---- */
+/* ---- Docker module (added by hand) ---- */
 #custom-docker {
 	padding: 0px 8px;
 	margin: 0px;

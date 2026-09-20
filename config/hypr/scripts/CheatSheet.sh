@@ -1,6 +1,6 @@
 #!/bin/bash
-# Affiche tous les raccourcis definis dans keybinds.conf via rofi.
-# Se met a jour tout seul : les fichiers sont relus a chaque ouverture.
+# Shows every shortcut defined in keybinds.conf, through rofi.
+# Keeps itself up to date: the files are re-read on each opening.
 
 CONF="$HOME/.config/hypr/configs/keybinds.conf"
 MAIN="$HOME/.config/hypr/hyprland.conf"

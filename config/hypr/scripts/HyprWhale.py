@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Hyprwhale — popup Docker pour la waybar (bilingue FR / EN).
+"""Hyprwhale -- a Docker popup for waybar (bilingual FR / EN).
 
-N'a pas de palette propre : il hérite de celle de GTK, que matugen
-régénère à chaque changement de fond d'écran. SIGUSR1 recharge le thème.
+Has no palette of its own: it inherits GTK's, which matugen regenerates on
+every wallpaper change. SIGUSR1 reloads the theme.
 """
 
 import json
@@ -65,20 +65,20 @@ T = {
     },
 }
 
-# Couleurs d'état : volontairement hors du thème. Un conteneur planté doit
-# rester rouge même si l'utilisateur choisit un accent vert.
+# State colours: deliberately outside the theme. A crashed container has to
+# stay red even if the user picks a green accent.
 CSS = b"""
-/* Fond translucide, comme le notch : la fenetre elle-meme ne dessine rien,
-   c'est .hw-surface qui pose le fond. Le rayon suit celui de Hyprland
-   (rounding = 10) pour que les deux coins coincident. Le flou global de
-   Hyprland s'applique tout seul des que la fenetre est transparente. */
+/* Translucent background, like the notch: the window itself draws nothing,
+   .hw-surface is what lays the background down. The radius follows Hyprland's
+   (rounding = 10) so the two corners coincide. Hyprland's global blur applies
+   by itself as soon as the window is transparent. */
 window, window.background { background: transparent; }
 .hw-root .hw-surface {
   background: alpha(@window_bg_color, 0.85);
   border-radius: 10px;
 }
 
-/* meme police que la waybar : le popup parle la langue du bureau */
+/* the same font as waybar: the popup speaks the desktop's language */
 .hw-root, .hw-root button, .hw-root label {
   font-family: "JetBrainsMono Nerd Font Propo", "JetBrains Mono", monospace;
   font-size: 12px;
@@ -138,8 +138,8 @@ SOCKET = hypr_socket()
 
 
 def ipc(command):
-    """Parle a Hyprland en direct : ~0.2 ms, contre ~10 ms via hyprctl.
-    Assez rapide pour corriger la position a chaque image d'animation."""
+    """Talks to Hyprland directly: ~0.2 ms, against ~10 ms through hyprctl.
+    Fast enough to correct the position on every animation frame."""
     if not SOCKET:
         return
     try:
@@ -188,7 +188,7 @@ class Container:
         self.cid, self.name, self.image = cid, name, image
         self.state, self.status, self.ports = state, status, ports
         self.cpu = self.mem = "—"
-        self.pending = None       # "starting" / "stopping" pendant la transition
+        self.pending = None       # "starting" / "stopping" during the transition
 
 
 class Whale(Adw.ApplicationWindow):
@@ -220,8 +220,8 @@ class Whale(Adw.ApplicationWindow):
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
 
-        # se ferme quand elle perd le focus, comme un menu de barre système.
-        # Le garde-fou évite de la fermer avant qu'elle l'ait jamais reçu.
+        # Closes when it loses focus, like a system tray menu. The guard keeps
+        # it from closing before it has ever received focus.
         self._had_focus = False
         self._closing = None
         self.connect("notify::is-active", self._on_focus)
@@ -230,7 +230,7 @@ class Whale(Adw.ApplicationWindow):
         GLib.timeout_add(REFRESH_MS, self._tick)
         GLib.timeout_add(700, self._remember_anchor)
 
-    # -- en-tête -----------------------------------------------------------
+    # -- header ------------------------------------------------------------
 
     def _on_focus(self, *_):
         if self.is_active():
@@ -241,8 +241,8 @@ class Whale(Adw.ApplicationWindow):
             return
         if not self._had_focus:
             return
-        # delai de grace : avec follow_mouse, un simple passage de souris
-        # ne doit pas suffire a fermer le menu.
+        # A grace delay: with follow_mouse, the mouse merely passing by must
+        # not be enough to close the menu.
         if self._closing is None:
             self._closing = GLib.timeout_add(450, self._close_now)
 
@@ -258,7 +258,7 @@ class Whale(Adw.ApplicationWindow):
             return Gdk.EVENT_STOP
         return Gdk.EVENT_PROPAGATE
 
-    # -- lecture de l'état -------------------------------------------------
+    # -- reading the state -------------------------------------------------
 
     def _tick(self):
         self.refresh()
@@ -351,7 +351,7 @@ class Whale(Adw.ApplicationWindow):
         box = Gtk.Box(spacing=9)
         box.add_css_class("hw-head")
 
-        logo = Gtk.Label(label="\uf308")      # glyphe Docker de la Nerd Font
+        logo = Gtk.Label(label="\uf308")      # the Nerd Font Docker glyph
         logo.add_css_class("hw-logo")
         name = Gtk.Label(label=self.s["title"])
         name.add_css_class("hw-title")
@@ -408,7 +408,7 @@ class Whale(Adw.ApplicationWindow):
         return box
 
     def _container_area(self):
-        """Seule cette zone défile : la fenêtre suit donc le contenu."""
+        """Only this area scrolls: the window therefore follows the content."""
         if not self.containers:
             return self._notice(self.s["none"], self.s["none_sub"])
 
@@ -529,10 +529,10 @@ class Whale(Adw.ApplicationWindow):
         return pop
 
     def _more(self):
-        # lazydocker n'a aucune option pour ouvrir sur un panneau precis :
-        # Images / Volumes / Reseaux / Compose lanceraient tous la meme vue.
-        # On ne garde donc que ce qui correspond a une commande reelle.
-        # (libelle, commande, garder le terminal ouvert a la fin)
+        # lazydocker has no option to open on a specific panel: Images /
+        # Volumes / Networks / Compose would all launch the same view. So we
+        # keep only what maps to a real command.
+        # (label, command, keep the terminal open at the end)
         entries = [
             (self.s["events"], "docker events", False),
             (self.s["usage"], "docker stats", False),
@@ -610,7 +610,7 @@ class Whale(Adw.ApplicationWindow):
         GLib.timeout_add(3500, lambda: (self.refresh(), GLib.SOURCE_REMOVE)[1])
 
     def _remember_anchor(self):
-        """La windowrule pose la fenêtre ; on retient ce coin haut-gauche."""
+        """The windowrule places the window; we remember that top-left corner."""
         try:
             out = subprocess.run(["hyprctl", "clients", "-j"],
                                  capture_output=True, text=True, timeout=3)
@@ -623,10 +623,10 @@ class Whale(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _reanchor(self):
-        """Hyprland agrandit les fenêtres flottantes autour de leur centre.
-        On recolle le coin haut-gauche a chaque image plutot qu'une fois a
-        la fin : sinon la fenetre monte pendant l'animation puis redescend
-        d'un coup, ce qui se voit."""
+        """Hyprland grows floating windows around their centre. We put the
+        top-left corner back on every frame rather than once at the end:
+        otherwise the window rises during the animation and drops back in one
+        step, which is visible."""
         if not self.anchor:
             return GLib.SOURCE_REMOVE
         ipc(f"/dispatch movewindowpixel exact {self.anchor[0]} {self.anchor[1]},"
@@ -634,12 +634,12 @@ class Whale(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _hold_anchor(self, duration_ms=420, follow=False):
-        """Suit la transition image par image.
+        """Follows the transition frame by frame.
 
-        `follow` ajoute une demande de retaille : GTK ne rétrécit jamais de
-        lui-même, donc au repli on lui redemande son minimum a chaque image.
-        Il epouse alors la hauteur du contenu qui se replie, au lieu de
-        rester grand puis de sauter a la fin."""
+        `follow` adds a resize request: GTK never shrinks on its own, so while
+        collapsing we ask it for its minimum on every frame. It then tracks the
+        height of the collapsing content instead of staying large and jumping
+        at the end."""
         if not self.anchor:
             return
         self._hold_until = duration_ms
@@ -647,8 +647,9 @@ class Whale(Adw.ApplicationWindow):
 
         def frame():
             if follow:
-                # hauteur que GTK veut pour le contenu a cet instant : elle
-                # decroit pendant le repli, la fenetre suit donc l'animation.
+                # The height GTK wants for the content at that instant: it
+                # decreases while collapsing, so the window follows the
+                # animation.
                 _, natural, _, _ = self.measure(Gtk.Orientation.VERTICAL, width)
                 ipc(f"/dispatch resizewindowpixel exact {width} {natural},"
                     f"class:dev.local.HyprWhale")
@@ -658,8 +659,8 @@ class Whale(Adw.ApplicationWindow):
         GLib.timeout_add(16, frame)
 
     def _run_in_term(self, command, wait):
-        """command a None : simple shell. wait : garder la fenetre ouverte
-        quand la commande se termine (prune rend la main, pas `docker events`)."""
+        """command at None: a plain shell. wait: keep the window open when the
+        command ends (prune returns, `docker events` does not)."""
         if command is None:
             spawn(TERMINAL)
         elif wait:
@@ -668,8 +669,8 @@ class Whale(Adw.ApplicationWindow):
             spawn(TERMINAL, "sh", "-c", command)
 
     def _shrink(self):
-        """Rappel : GTK agrandit une fenêtre mappée mais ne la rétrécit
-        jamais. On lui redemande son minimum, qu'il calcule sur le contenu."""
+        """A reminder: GTK grows a mapped window but never shrinks it. We ask
+        it for its minimum, which it computes from the content."""
         self._hold_anchor(300, follow=True)
         return GLib.SOURCE_REMOVE
 
@@ -678,7 +679,7 @@ class Whale(Adw.ApplicationWindow):
         self.toasts.add_toast(Adw.Toast(title=self.s["m_copied"], timeout=2))
 
     def reload_theme(self):
-        """Appelé sur SIGUSR1, quand matugen a régénéré la palette."""
+        """Called on SIGUSR1, once matugen has regenerated the palette."""
         Gtk.Settings.get_default().reset_property("gtk-theme-name")
         self._render()
 

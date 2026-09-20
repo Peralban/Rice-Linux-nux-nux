@@ -42,11 +42,11 @@
 }
 
 .floating-notifications.background .notification-row .notification-background .notification.critical {
-  /* Aucun cadre propre. Le thema d'origine en dessinait un second, epais et
-     colore, a l'interieur de celui du conteneur - deux contours concentriques
-     de rayons differents, et une pop-up qui ne ressemblait a aucune autre du
-     bureau. L'urgence se lit deja aux deux boutons qui attendent une reponse ;
-     elle n'a pas besoin d'un anneau autour. */
+  /* No frame of its own. The original theme drew a second one, thick and
+     coloured, inside the container's -- two concentric outlines of different
+     radii, and a popup that looked like nothing else on the desktop. The
+     urgency already reads from the two buttons waiting for an answer; it does
+     not need a ring around it. */
   border: none;
 }
 
@@ -59,9 +59,9 @@
 }
 
 .floating-notifications.background .notification-row .notification-background .notification > *:last-child > * .notification-action {
-  /* Rayon et marge accordes au conteneur : a 8px de rayon et 6px de marge, le
-     coin carre du bouton depassait sous la courbe a 23px de la fenetre, et le
-     fond colore du survol venait mordre la bordure. */
+  /* Radius and margin matched to the container: at 8px radius and 6px margin
+     the button's square corner stuck out under the window's 23px curve, and
+     the hover background bit into the border. */
   border-radius: 14px;
   background-color: @background-alt ;
   margin: 10px;
@@ -69,19 +69,20 @@
 }
 
 .floating-notifications.background .notification-row .notification-background .notification > *:last-child > * .notification-action:hover {
-  /* @hover valait @outline : un gris sur un gris, invisible au survol. Les
-     roles matugen portent deja l'accent du theme, autant s'en servir. */
+  /* @hover resolved to @outline: a grey on a grey, invisible on hover. The
+     matugen roles already carry the theme's accent, so use them. */
   background-color: @primary;
   color: @on_primary;
   border: 1px solid @primary;
 }
 
-/* Sur une notification critique, le dernier bouton est celui qui refuse -
-   c'est la demande de consentement AirDrop. Le teinter en @error au survol
-   evite d'accepter un fichier en visant mal, et reste dans la palette. */
+/* On a critical notification the last button is the one that declines -- this
+   is the AirDrop consent prompt. Tinting it @error on hover avoids accepting a
+   file by aiming badly, and stays inside the palette. */
 .floating-notifications.background .notification-row .notification-background .notification.critical > *:last-child > * .notification-action:last-child:hover {
-  /* @error est un rose clair - en aplat sur un theme sombre il hurle. Le role
-     _container existe pour ca : le meme sens, a l'intensite d'un fond. */
+  /* @error is a light pink -- as a solid fill on a dark theme it shouts. The
+     _container role exists for this: the same meaning, at a background's
+     intensity. */
   background-color: @error_container;
   color: @on_error_container;
   border: 1px solid @error_container;
@@ -134,18 +135,18 @@
 
 
 /* --- swaync >= 0.12 -------------------------------------------------------
-   Le theme d'origine vise `.notification > *:last-child > * .notification-action`,
-   structure des versions precedentes. Depuis la 0.12 `.notification-action`
-   est le CONTENEUR et le bouton reel est `.notification-action > button` : les
-   regles plus haut ne matchent plus rien, ce qui se voyait a ce que le survol
-   ne faisait rien et que les boutons touchaient le bord arrondi. Les regles
-   ci-dessous visent la structure actuelle ; celles du dessus restent pour le
-   centre de notifications et les swaync plus anciens. */
+   The original theme targets `.notification > *:last-child > * .notification-action`,
+   the structure of earlier versions. Since 0.12 `.notification-action` is the
+   CONTAINER and the real button is `.notification-action > button`: the rules
+   above match nothing any more, which showed up as hover doing nothing and the
+   buttons touching the rounded edge. The rules below target the current
+   structure; the ones above stay for the notification centre and for older
+   swaync. */
 
-/* Le thema d'origine impose `min-height: 3.4em` aux enfants du dernier bloc -
-   48px par bouton, quoi qu'on mette dessus. C'est ce qui donnait ces deux
-   grosses bulles sans rapport avec le reste du theme : une notification
-   ordinaire du bureau tient en une ligne de texte et deux de detail. */
+/* The original theme forces `min-height: 3.4em` on the last block's children
+   -- 48px per button, whatever is put on top. That is what produced those two
+   oversized pills, unrelated to the rest of the theme: an ordinary desktop
+   notification fits in one line of text and two of detail. */
 .floating-notifications.background .notification-row .notification-background .notification > *:last-child > * {
   min-height: 0;
 }
@@ -157,8 +158,8 @@
 }
 
 .floating-notifications.background .notification-row .notification-background .notification .notification-action > button {
-  /* Rayon accorde a la fenetre plutot que le carre par defaut, sans quoi le
-     fond du survol mord la courbe du coin. */
+  /* Radius matched to the window rather than the default square, without which
+     the hover background bites into the corner's curve. */
   border-radius: 10px;
   background-color: @background-alt;
   color: @text;
@@ -179,19 +180,20 @@
   color: @background;
 }
 
-/* Sur une notification critique le dernier bouton est celui qui refuse -
-   c'est la demande de consentement AirDrop. @error est un rose clair qui
-   hurle en aplat ; le role _container porte le meme sens a l'intensite d'un
-   fond. */
+/* On a critical notification the last button is the one that declines -- this
+   is the AirDrop consent prompt. @error is a light pink that shouts as a solid
+   fill; the _container role carries the same meaning at a background's
+   intensity. */
 .floating-notifications.background .notification-row .notification-background .notification.critical .notification-action:last-child > button:hover {
   background-color: @error_container;
   color: @on_error_container;
   border: 1px solid @error_container;
 }
 
-/* Texte centre dans la bulle. `text-align` est une propriete CSS GTK depuis
-   4.16 (on est en 4.22) - avant, l'alignement d'un GtkLabel n'etait reglable
-   que par la propriete xalign du widget, donc inatteignable depuis un theme. */
+/* Text centred in the pill. `text-align` has been a GTK CSS property since
+   4.16 (we are on 4.22) -- before that, a GtkLabel's alignment was only
+   settable through the widget's xalign property, and so out of a theme's
+   reach. */
 .floating-notifications.background .notification-row .notification-background .notification .notification-default-action .notification-content .text-box .summary,
 .floating-notifications.background .notification-row .notification-background .notification .notification-default-action .notification-content .text-box .body,
 .floating-notifications.background .notification-row .notification-background .notification .notification-default-action .notification-content .text-box label {

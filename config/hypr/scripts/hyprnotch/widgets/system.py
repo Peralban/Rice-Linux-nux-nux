@@ -1,6 +1,6 @@
-"""Widget système : CPU, RAM, GPU, température, batterie, réseau.
+"""System widget: CPU, RAM, GPU, temperature, battery, network.
 
-Ne mesure rien tant que le panneau est fermé.
+Measures nothing while the panel is closed.
 """
 
 import gi

@@ -34,8 +34,8 @@ def _log(msg):
     """Swallowing the failure here is how a dead advert looks like a phone
     problem. Anything that goes wrong has to reach the notch's stderr.
 
-    Horodate, parce que la question n'est pas seulement « l'annonce est-elle
-    partie » mais « etait-elle en vie pendant que la recherche tournait ».
+    Timestamped, because the question is not only "did the advert go out" but
+    "was it alive while the browse was running".
     """
     print("[ble %s] %s" % (time.strftime("%H:%M:%S"), msg),
           file=sys.stderr, flush=True)

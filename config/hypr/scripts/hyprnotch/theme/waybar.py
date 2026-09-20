@@ -1,9 +1,9 @@
-"""Lecture des réglages de la waybar, pour que le notch s'y aligne.
+"""Reads waybar's settings, so the notch can align to them.
 
-HyprSettings écrit la hauteur, les marges, la graisse, la taille de police
-et le rembourrage des bulles. Plutôt que de dupliquer ces valeurs dans une
-deuxième configuration, on relit les fichiers de la barre : changer un
-curseur dans HyprSettings déplace aussi le notch.
+HyprSettings writes the height, the margins, the weight, the font size and
+the pills' padding. Rather than duplicate those values in a second
+configuration, we re-read the bar's own files: moving a slider in
+HyprSettings moves the notch too.
 """
 
 import json
@@ -14,7 +14,7 @@ import socket
 CONFIG = os.path.expanduser("~/.config/waybar/config")
 STYLE = os.path.expanduser("~/.config/waybar/style.css")
 
-# La bulle : le bloc de règles partagé par tous les modules de la barre.
+# The pill: the block of rules shared by every module on the bar.
 BUBBLE = re.compile(r"background-color: alpha\(@surface_container, 0\.75\);.*?\}", re.S)
 
 DEFAULTS = {
@@ -42,7 +42,7 @@ def _read(path):
 
 
 def read_bar():
-    """Renvoie les métriques de la barre, valeurs par défaut à l'appui."""
+    """Returns the bar's metrics, backed by defaults."""
     out = dict(DEFAULTS)
     config_path, style_path = _paths()
 
@@ -87,11 +87,11 @@ def _hypr_socket():
 
 
 def layer_geometry(namespace="waybar"):
-    """Géométrie réelle de la barre, demandée au compositeur.
+    """The bar's real geometry, asked of the compositor.
 
-    Plus fiable que de recalculer une hauteur à partir de la police : c'est
-    la mesure de ce qui est affiché, et elle suit toute seule les réglages
-    changés dans HyprSettings."""
+    More reliable than recomputing a height from the font: this measures what
+    is actually displayed, and it follows settings changed in HyprSettings on
+    its own."""
     path = _hypr_socket()
     if not path:
         return None
@@ -119,10 +119,10 @@ def layer_geometry(namespace="waybar"):
 
 
 def island_metrics():
-    """Hauteur et position verticale d'une bulle de la barre.
+    """Height and vertical position of one of the bar's pills.
 
-    La waybar entoure ses groupes de modules d'un rembourrage : la bulle
-    occupe la hauteur de la barre moins ce rembourrage, en haut et en bas.
+    waybar surrounds its module groups with padding: the pill occupies the
+    bar's height minus that padding, top and bottom.
     """
     bar = read_bar()
     group_pad = bar.get("group_pad", 1)
@@ -134,5 +134,5 @@ def island_metrics():
 
 
 def watched_paths():
-    """Les fichiers à surveiller pour suivre HyprSettings en direct."""
+    """The files to watch in order to follow HyprSettings live."""
     return [path for path in _paths() if path]

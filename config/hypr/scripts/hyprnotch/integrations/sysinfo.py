@@ -1,7 +1,7 @@
-"""Lecture des capteurs système, sans dépendance ni sous-processus.
+"""Reads the system's sensors, with no dependency and no subprocess.
 
-Tout vient de /proc et /sys : aucun `nmcli`, `sensors` ou `free` lancé en
-boucle. Les chemins sont résolus une seule fois au démarrage.
+Everything comes from /proc and /sys: no `nmcli`, `sensors` or `free` run in
+a loop. The paths are resolved once, at startup.
 """
 
 import glob
@@ -24,7 +24,7 @@ def _int(path, default=0):
 
 
 def _find_temp():
-    """Préfère la sonde du CPU, retombe sur la zone thermique ACPI."""
+    """Prefers the CPU's own sensor, falls back on the ACPI thermal zone."""
     for name in ("k10temp", "coretemp", "zenpower", "cpu_thermal"):
         for hwmon in glob.glob("/sys/class/hwmon/hwmon*"):
             if _read(os.path.join(hwmon, "name")) == name:
@@ -66,7 +66,7 @@ NET = _find_wifi()
 
 
 class Sampler:
-    """Le CPU se mesure sur un delta : il faut deux lectures espacées."""
+    """CPU use is a delta: it needs two readings, spaced apart."""
 
     def __init__(self):
         self._last = self._cpu_jiffies()

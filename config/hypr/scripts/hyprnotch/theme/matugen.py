@@ -1,9 +1,9 @@
-"""Pont entre matugen et le notch.
+"""Bridge between matugen and the notch.
 
-Aucune couleur n'est écrite en dur. On relit le fichier que matugen génère
-déjà pour la waybar — il contient la palette Material You complète — et on
-le concatène devant notre feuille de style. Quand le fond d'écran change,
-matugen réécrit le fichier, le moniteur le voit et le thème suit.
+No colour is hard-coded. We re-read the file matugen already generates for
+waybar -- it holds the complete Material You palette -- and concatenate it in
+front of our own stylesheet. When the wallpaper changes, matugen rewrites the
+file, the monitor sees it, and the theme follows.
 """
 
 import os
@@ -19,15 +19,15 @@ from . import waybar  # noqa: E402
 
 DEFINE = re.compile(r"@define-color\s+([a-z0-9_]+)\s+([^;]+);")
 
-# Ramène les logos de lecteur à la hauteur des icônes de la waybar.
+# Brings player logos down to the height of waybar's icons.
 GLYPH_RATIO = 0.95
 
-# Écart mesuré entre la taille annoncée par la waybar et celle qu'elle
-# dessine réellement : hauteur de capitale comparée au pixel sur la barre.
+# Measured gap between the size waybar declares and the one it actually draws:
+# cap height compared against the pixel on the bar.
 BAR_SCALE = 0.782
 
-# Repli minimal si matugen n'a jamais tourné : gris neutres, jamais une
-# couleur d'accent inventée.
+# Minimal fallback if matugen has never run: neutral greys, never an invented
+# accent colour.
 FALLBACK = {
     "background": "#141414", "surface": "#141414",
     "surface_container": "#1e1e1e", "surface_container_high": "#282828",
@@ -35,15 +35,15 @@ FALLBACK = {
     "outline": "#8a8a8a", "outline_variant": "#3a3a3a",
     "primary": "#d0bcff", "on_primary": "#20124a",
     "secondary": "#ccc2dc", "tertiary": "#efb8c8",
-    # Sans cette entree, @error n'est defini nulle part quand matugen n'a
-    # jamais tourne, et GTK rejette LA FEUILLE ENTIERE, pas la seule regle.
+    # Without this entry, @error is defined nowhere when matugen has never run,
+    # and GTK rejects THE WHOLE SHEET, not just the one rule.
     "error": "#ffb4ab",
 }
 
 STYLE = """
 window, window.background {{ background: transparent; }}
-/* Le thème pose un fond opaque sur scrolledwindow et viewport ; il se
-   voyait au travers de la coque au repos. */
+/* The theme puts an opaque background on scrolledwindow and viewport; it showed
+   through the shell at rest. */
 scrolledwindow, viewport, stack {{ background: transparent; }}
 
 .nk-root, .nk-root label, .nk-root button {{
@@ -51,23 +51,23 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   color: @on_surface;
 }}
 
-/* La coque. Le seul élément qui dessine un fond : tout le reste est posé
-   dessus, ce qui garde les coins arrondis propres pendant l'animation. */
+/* The shell. The only element that draws a background: everything else sits on
+   top of it, which keeps the rounded corners clean during the animation. */
 .nk-shell {{
   background: alpha(@background, {opacity});
   border: 1px solid alpha(@outline, 0.22);
   border-radius: {radius}px;
-  /* La coque s'efface en fondu plutôt que d'un coup quand la pastille
-     redevient invisible. */
+  /* The shell fades out rather than vanishing when the pill
+     becomes invisible again. */
   transition: background-color 140ms ease-out, border-color 140ms ease-out;
 }}
 
-/* Au repos, sans lecture en cours : la coque ne dessine plus rien, mais la
-   surface reste là — on peut toujours la survoler pour ouvrir le panneau. */
+/* At rest, with nothing playing: the shell draws nothing, but the surface is
+   still there -- it can still be hovered to open the panel. */
 .nk-shell.nk-ghost {{
-  /* Pas tout à fait transparent : une coque totalement vide ne produit
-     aucune image, et la surface layer-shell reste alors figée à la taille
-     de repli de GTK. 1 % suffit à forcer le rendu sans rien montrer. */
+  /* Not quite transparent: a completely empty shell produces no image at all,
+     and the layer-shell surface then stays stuck at GTK's fallback size. 1% is
+     enough to force a render without showing anything. */
   background: alpha(@background, 0.01);
   border-color: transparent;
 }}
@@ -75,20 +75,20 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-pad {{ padding: 0 12px; }}
 .nk-pad-lg {{ padding: 14px 16px; }}
 
-/* --- état compact : mêmes mesures que les bulles de la waybar --- */
+/* --- compact state: the same metrics as waybar's pills --- */
 .nk-root .nk-pill {{ padding: 0 {pad_x}px; }}
 .nk-root .nk-pill label {{
   font-family: {bar_font};
   font-weight: {bar_weight};
-  /* Le pourcentage, pas une taille en pixels : il se résout sur la police
-     GTK par défaut, exactement la base sur laquelle la waybar applique le
-     sien. Recalculer en pixels donnait un texte un tiers trop grand. */
+  /* A percentage, not a pixel size: it resolves against GTK's default font,
+     exactly the base waybar applies its own against. Recomputing it in pixels
+     gave text a third too large. */
   font-size: {bar_size};
   color: @secondary;
 }}
 .nk-root .nk-pill .nk-compact-title {{ font-style: italic; }}
-/* Les logos de lecteur remplissent bien plus leur cadratin que les icônes
-   de la barre : à taille de police égale ils sortaient de 3 px. */
+/* Player logos fill far more of their em than the bar's icons do: at equal
+   font size they overshot by 3 px. */
 .nk-root .nk-pill .nk-glyph {{ font-size: {glyph_size}; }}
 .nk-thumb {{
   border-radius: 3px;
@@ -96,7 +96,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 }}
 .nk-clock {{ font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px; }}
 
-/* --- typographie du panneau --- */
+/* --- panel typography --- */
 .nk-title {{ font-size: 14px; font-weight: 700; }}
 .nk-artist {{ font-size: 12px; color: @primary; }}
 .nk-meta {{ font-size: 10.5px; color: @on_surface_variant; }}
@@ -106,7 +106,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 }}
 .nk-empty {{ font-size: 11.5px; color: @on_surface_variant; }}
 
-/* --- pochette --- */
+/* --- cover art --- */
 .nk-cover {{
   border-radius: 10px;
   background: @surface_container;
@@ -118,7 +118,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   padding: 3px;
 }}
 
-/* --- contrôles média --- */
+/* --- media controls --- */
 .nk-root button.nk-ctl {{
   min-width: 26px; min-height: 26px; padding: 0;
   background: none; border: none; box-shadow: none;
@@ -135,7 +135,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root button.nk-play:hover {{ background: alpha(@primary, 0.28); }}
 .nk-root button.nk-ctl.nk-on {{ color: @primary; }}
 
-/* --- barre de progression : fine, cliquable --- */
+/* --- progress bar: thin, clickable --- */
 .nk-scale {{ min-height: 14px; }}
 .nk-scale trough {{
   min-height: 4px; border-radius: 999px;
@@ -149,14 +149,14 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-scale:hover slider {{ background: @primary; border-radius: 999px; }}
 
 /* --- notes --- */
-/* Le thème pose un fond opaque sur le nœud `text` d'une zone d'édition :
-   il faisait une dalle claire au milieu du panneau. */
+/* The theme puts an opaque background on a text view's `text` node: it made a
+   light slab in the middle of the panel. */
 .nk-root .nk-note, .nk-root .nk-note text {{
   background: transparent;
   font-size: 11px;
 }}
 
-/* --- onglets de la colonne droite --- */
+/* --- right-column tabs --- */
 .nk-root button.nk-tab {{
   min-width: 22px; min-height: 22px; padding: 0;
   background: none; border: none; box-shadow: none;
@@ -165,7 +165,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root button.nk-tab:hover {{ background: alpha(@on_surface, 0.08); }}
 .nk-root button.nk-tab.nk-on {{ background: alpha(@primary, 0.18); color: @primary; }}
 
-/* --- calendrier --- */
+/* --- calendar --- */
 .nk-month {{ font-size: 13px; font-weight: 700; }}
 .nk-year {{ font-size: 11px; color: @on_surface_variant; }}
 .nk-dow {{ font-size: 9px; color: alpha(@on_surface_variant, 0.75); font-weight: 700; }}
@@ -180,13 +180,13 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-event-name {{ font-size: 11px; font-weight: 600; }}
 .nk-event-time {{ font-size: 10px; color: @on_surface_variant; }}
 
-/* --- système --- */
+/* --- system --- */
 .nk-stat-key {{ font-size: 10px; letter-spacing: 0.8px; color: @on_surface_variant; }}
 .nk-stat-val {{ font-size: 11px; font-weight: 700; }}
 .nk-gauge trough {{ min-height: 3px; border-radius: 999px; background: alpha(@on_surface, 0.14); }}
 .nk-gauge progress {{ min-height: 3px; border-radius: 999px; background: @primary; }}
 
-/* --- étagère à fichiers --- */
+/* --- file shelf --- */
 .nk-drop {{
   border: 1px dashed alpha(@outline, 0.45);
   border-radius: 12px;
@@ -202,9 +202,9 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 
 .nk-sep {{ background: alpha(@outline, 0.18); min-width: 1px; min-height: 1px; }}
 
-/* --- airdrop : meme grammaire visuelle que HyprWhale --- */
-/* Le logo porte l'etat : gris au repos, il ne se colore que pour signaler
-   un ecart. C'est la premiere chose qu'on lit en arrivant sur la page. */
+/* --- airdrop: the same visual grammar as HyprWhale --- */
+/* The logo carries the state: grey at rest, it only takes on a colour to flag
+   something out of the ordinary. It is the first thing read on arrival. */
 .nk-root .nk-logo {{ color: alpha(@on_surface, 0.30); }}
 .nk-root .nk-logo.nk-run  {{ color: @primary; }}
 .nk-root .nk-logo.nk-busy {{ color: @tertiary; }}
@@ -212,7 +212,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root .nk-name {{ font-weight: 700; font-size: 14px; letter-spacing: 0.3px; }}
 .nk-root .nk-state {{ font-size: 11px; color: @on_surface_variant; }}
 
-/* Bouton contourne plutot que pave plein. */
+/* An outlined button rather than a solid slab. */
 .nk-root button.nk-act {{
   min-height: 24px; padding: 0 10px; font-size: 11px;
   border-radius: 7px;
@@ -226,9 +226,9 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   color: alpha(@on_surface_variant, 0.5);
 }}
 
-/* Les bulles du selecteur de destinataire : un rond par appareil, comme le
-   panneau de partage d'iOS. Rond veut dire hauteur = largeur ET un rayon qui
-   depasse la moitie, sinon GTK rend un carre aux coins adoucis. */
+/* The recipient picker's bubbles: one circle per device, like the iOS share
+   sheet. Round means height = width AND a radius past half of it, otherwise GTK
+   renders a square with softened corners. */
 .nk-root button.nk-bubble {{
   min-width: 46px; min-height: 46px; padding: 0;
   border-radius: 999px;
@@ -242,8 +242,8 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   border-color: @primary;
 }}
 
-/* Action secondaire, posee dans un titre de section : elle ne doit pas
-   peser comme un bouton. */
+/* A secondary action, sitting in a section heading: it must not carry the
+   weight of a button. */
 .nk-root button.nk-link {{
   min-height: 0; padding: 1px 6px;
   background: none; border: none; box-shadow: none;
@@ -284,8 +284,8 @@ def read_palette(path):
 
 
 def gtk_font_px():
-    """Taille de police par défaut de GTK, en pixels. La waybar exprime la
-    sienne en pourcentage de cette base ; on refait le même calcul."""
+    """GTK's default font size, in pixels. waybar expresses its own as a
+    percentage of this base; we redo the same calculation."""
     try:
         name = Gtk.Settings.get_default().props.gtk_font_name or ""
         points = float(name.rsplit(" ", 1)[-1])
@@ -300,11 +300,11 @@ def build_css(palette, radius, opacity, bar=None):
         percent = float(bar["font_size"].rstrip("%")) / 100.0
     except (KeyError, ValueError):
         percent = 1.0
-    # La waybar pose son pourcentage sur le sélecteur universel, donc il se
-    # réapplique à chaque niveau de sa hiérarchie : le texte rendu est bien
-    # plus petit que le pourcentage annoncé. Reprendre le pourcentage tel
-    # quel donnait une pastille d'un tiers trop grande. BAR_SCALE est le
-    # facteur mesuré entre les deux rendus, pas une valeur théorique.
+    # waybar puts its percentage on the universal selector, so it reapplies at
+    # every level of its hierarchy: the rendered text is far smaller than the
+    # declared percentage. Taking the percentage at face value gave a pill a
+    # third too large. BAR_SCALE is the measured factor between the two
+    # renderings, not a theoretical value.
     effective = percent * BAR_SCALE
     head = "".join(f"@define-color {k} {v};\n" for k, v in palette.items())
     body = STYLE.format(
@@ -318,7 +318,7 @@ def build_css(palette, radius, opacity, bar=None):
 
 
 class Theme:
-    """Charge la palette, l'applique, et se recharge quand elle change."""
+    """Loads the palette, applies it, and reloads when it changes."""
 
     def __init__(self, config, on_change=None):
         self.path = os.path.expanduser(
@@ -350,8 +350,8 @@ class Theme:
             self.on_change()
 
     def _watch(self):
-        # La palette, plus les fichiers que HyprSettings réécrit : un curseur
-        # bougé dans le panneau de réglages se voit aussi dans le notch.
+        # The palette, plus the files HyprSettings rewrites: a slider moved in
+        # the settings panel shows up in the notch too.
         self.monitor = []
         for path in [self.path, *waybar.watched_paths()]:
             try:
@@ -363,7 +363,7 @@ class Theme:
                 pass
 
     def _on_file_event(self, _m, _f, _o, event):
-        # matugen réécrit le fichier : on attend la fin de l'écriture.
+        # matugen rewrites the file: wait for the write to finish.
         if event in (Gio.FileMonitorEvent.CHANGES_DONE_HINT,
                      Gio.FileMonitorEvent.CREATED,
                      Gio.FileMonitorEvent.RENAMED):
