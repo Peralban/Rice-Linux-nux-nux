@@ -199,6 +199,22 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 }}
 .nk-file:hover {{ background: alpha(@primary, 0.16); }}
 .nk-file-name {{ font-size: 11px; }}
+/* The per-row close button. Hidden until the row is hovered: twelve rows each
+   showing a cross reads as a list of things to delete rather than a shelf. */
+.nk-root button.nk-file-close {{
+  min-width: 18px; min-height: 18px; padding: 0;
+  background: none; border: none; box-shadow: none;
+  border-radius: 999px;
+  color: @on_surface_variant;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}}
+.nk-file:hover button.nk-file-close {{ opacity: 0.75; }}
+.nk-root button.nk-file-close:hover {{
+  opacity: 1;
+  background: alpha(@error, 0.22);
+  color: @error;
+}}
 
 .nk-sep {{ background: alpha(@outline, 0.18); min-width: 1px; min-height: 1px; }}
 

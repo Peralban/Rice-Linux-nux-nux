@@ -30,12 +30,20 @@ STRINGS = {
     "fr": {"title": "FICHIERS", "drop": "Déposer des fichiers ici",
            "hint": "glisse-les dehors pour les récupérer",
            "clear": "Vider l'étagère", "open": "Ouvrir",
+           "remove": "Retirer de l'étagère",
            "count": "{n} en attente"},
     "en": {"title": "FILES", "drop": "Drop files here",
            "hint": "drag them out to pick them up",
            "clear": "Clear the shelf", "open": "Open",
+           "remove": "Take off the shelf",
            "count": "{n} waiting"},
 }
+
+# tumbler, the thumbnailer an Xfce desktop already runs. Asking it is what
+# gives a preview for the formats we cannot decode ourselves -- PDF, video,
+# ODF -- instead of falling back to the MIME icon.
+THUMBNAILER = "org.freedesktop.thumbnails.Thumbnailer1"
+THUMBNAILER_PATH = "/org/freedesktop/thumbnails/Thumbnailer1"
 
 
 def content_for(gfile):
@@ -70,28 +78,100 @@ def stamp_of(path):
         return (path, 0, 0)
 
 
+def fresh_cached(cached, path):
+    """Says whether the cached thumbnail still matches the file.
+
+    `thumbnail::is-valid` looks like it was made for this, but it reports
+    false here even on a thumbnail Thunar has just produced and is happily
+    drawing -- trusting it threw every cached thumbnail away. So apply the
+    freedesktop rule the thumbnail carries itself: the source mtime, written
+    into the PNG.
+    """
+    try:
+        stamp = GdkPixbuf.Pixbuf.new_from_file(cached).get_option(
+            "tEXt::Thumb::MTime")
+        # The spec says whole seconds, but tumbler's PDF thumbnailer writes
+        # sub-second precision -- "1789323098.069184". Parsing that as an int
+        # raises, which declared every PDF thumbnail stale and sent it back to
+        # the MIME icon. Compare on whole seconds, whatever was written.
+        return stamp is not None and int(float(stamp)) == int(os.stat(path).st_mtime)
+    except (GLib.Error, OSError, TypeError, ValueError):
+        return False
+
+
 def load_preview(path, size, done):
     """Looks for a thumbnail and calls back `done(texture)` on the GTK loop.
-    Calls back nothing if the file has no image to show."""
+    Calls back nothing if the file has nothing to show."""
     try:
         info = Gio.File.new_for_path(path).query_info(
-            "standard::content-type,thumbnail::path,thumbnail::is-valid",
+            "standard::content-type,thumbnail::path",
             Gio.FileQueryInfoFlags.NONE, None)
     except GLib.Error:
         return
 
-    # The desktop thumbnail first: free, already the right size, and it covers
-    # the videos and PDFs we could not render ourselves. The flag matters as
-    # much as the path -- the cached file often exists when it no longer matches
-    # what we are looking at.
-    if info.get_attribute_boolean("thumbnail::is-valid"):
-        cached = info.get_attribute_byte_string("thumbnail::path")
-        if cached and os.path.exists(cached):
-            decode(cached, size, done)
-            return
+    cached = info.get_attribute_byte_string("thumbnail::path")
+    if cached and os.path.exists(cached) and fresh_cached(cached, path):
+        decode(cached, size, done)
+        return
 
-    if (info.get_content_type() or "").startswith("image/"):
+    mime = info.get_content_type() or ""
+    # An image we decode ourselves: no round trip on the bus for a file we
+    # already know how to read.
+    if mime.startswith("image/"):
         decode(path, size, done)
+        return
+
+    # Everything else -- PDF, video, ODF -- goes through tumbler, which writes
+    # the thumbnail into the shared cache and tells us when it is there.
+    request_thumbnail(path, mime, size, done)
+
+
+def request_thumbnail(path, mime, size, done):
+    """Has tumbler produce the thumbnail, then loads it.
+
+    The subscription and the bus are kept alive for the length of the request:
+    collected early, the signal would never arrive and the row would sit on
+    its icon with nothing to say so.
+    """
+    if not mime:
+        return
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        uri = Gio.File.new_for_path(path).get_uri()
+        handle = bus.call_sync(
+            THUMBNAILER, THUMBNAILER_PATH, THUMBNAILER, "Queue",
+            GLib.Variant("(asasssu)", ([uri], [mime], "normal", "default", 0)),
+            GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, 5000, None)[0]
+    except GLib.Error:
+        return
+
+    state = {}
+
+    def stop():
+        if "id" in state:
+            bus.signal_unsubscribe(state.pop("id"))
+
+    def on_signal(_bus, _sender, _path, _iface, signal, params):
+        if params[0] != handle:
+            return
+        if signal == "Ready":
+            # Tumbler does not hand back the path it wrote, so read the
+            # attribute it has just filled in.
+            try:
+                info = Gio.File.new_for_path(path).query_info(
+                    "thumbnail::path", Gio.FileQueryInfoFlags.NONE, None)
+                produced = info.get_attribute_byte_string("thumbnail::path")
+            except GLib.Error:
+                produced = None
+            stop()
+            if produced and os.path.exists(produced):
+                decode(produced, size, done)
+        elif signal in ("Error", "Finished"):
+            stop()
+
+    state["id"] = bus.signal_subscribe(
+        THUMBNAILER, THUMBNAILER, None, THUMBNAILER_PATH, None,
+        Gio.DBusSignalFlags.NONE, on_signal)
 
 
 def decode(source, size, done):
@@ -161,6 +241,11 @@ class FilesWidget(Gtk.Box):
         self.paths = self.paths[-MAX_ITEMS:]
         self._render()
 
+    def remove(self, path):
+        if path in self.paths:
+            self.paths.remove(path)
+            self._render()
+
     def reset(self):
         self.paths = []
         self._render()
@@ -198,6 +283,15 @@ class FilesWidget(Gtk.Box):
         name.add_css_class("nk-file-name")
         name.set_tooltip_text(path)
         row.append(name)
+
+        # Taking one file off the shelf. Clearing was all or nothing, which is
+        # the wrong granularity once two files are waiting and only one of them
+        # has been dealt with.
+        drop_one = Gtk.Button(tooltip_text=self.s["remove"], valign=Gtk.Align.CENTER)
+        drop_one.set_child(Gtk.Image.new_from_icon_name("window-close-symbolic"))
+        drop_one.add_css_class("nk-file-close")
+        drop_one.connect("clicked", lambda _b, p=path: self.remove(p))
+        row.append(drop_one)
 
         # send the file back out
         source = Gtk.DragSource(actions=Gdk.DragAction.COPY)
