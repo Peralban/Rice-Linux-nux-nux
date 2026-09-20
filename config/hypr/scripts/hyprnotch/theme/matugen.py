@@ -242,6 +242,13 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   border-color: @primary;
 }}
 
+/* The picker's progress ring paints itself with the widget's own colour, so a
+   failed send is recoloured through CSS rather than a hardcoded red - it stays
+   inside the generated palette like everything else here. */
+.nk-root .nk-ring-error {{
+  color: @error;
+}}
+
 /* A secondary action, sitting in a section heading: it must not carry the
    weight of a button. */
 .nk-root button.nk-link {{

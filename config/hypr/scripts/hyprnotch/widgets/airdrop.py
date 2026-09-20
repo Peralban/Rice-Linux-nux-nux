@@ -27,6 +27,7 @@ STRINGS = {
         "retry": "Chercher à nouveau",
         "sent": "AirDrop envoyé", "recv": "Reçus dans ~/Downloads",
         "sending_to": "Envoi vers {name}…", "sent_to": "Envoyé à {name}",
+        "failed_to": "Échec vers {name}",
         "missing": "airdropd introuvable",
         "states": {
             "off": "Éteint", "waking": "Allumage…", "idle": "Visible",
@@ -52,6 +53,7 @@ STRINGS = {
         "retry": "Look again",
         "sent": "AirDrop sent", "recv": "Received in ~/Downloads",
         "sending_to": "Sending to {name}…", "sent_to": "Sent to {name}",
+        "failed_to": "Failed to {name}",
         "missing": "airdropd not found",
         "states": {
             "off": "Off", "waking": "Waking…", "idle": "Visible",
@@ -99,7 +101,14 @@ class _Ring(Gtk.DrawingArea):
         self._tick = self.add_tick_callback(self._advance)
 
     def finish(self, ok=True):
-        self.state = "done" if ok else "idle"
+        # A failure closes the ring too, in the theme's error colour. Going
+        # back to invisible was worse than useless: the outline simply vanished
+        # and left the recipient looking untouched, which is what an idle
+        # bubble looks like.
+        self.state = "done" if ok else "failed"
+        self.remove_css_class("nk-ring-error")
+        if not ok:
+            self.add_css_class("nk-ring-error")
         if self._tick is not None:
             self.remove_tick_callback(self._tick)
             self._tick = None
@@ -121,9 +130,11 @@ class _Ring(Gtk.DrawingArea):
         cr.set_line_width(2.5)
         cr.set_line_cap(1)          # cairo.LINE_CAP_ROUND
 
-        if self.state == "done":
+        if self.state in ("done", "failed"):
             # Solid, once it has landed: the dashes closing into an unbroken
-            # circle is the whole signal that the transfer finished.
+            # circle is the whole signal that the transfer finished. The colour
+            # says which way it went - `colour` is the widget's own, and the
+            # nk-ring-error class repaints it from the palette's @error.
             cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.95)
             cr.arc(cx, cy, radius, 0, 2 * math.pi)
             cr.stroke()
@@ -478,6 +489,11 @@ class AirDropWidget(Gtk.Box):
         if self._active_ring is not None:
             if state == "sending":
                 self._saw_sending = True
+            elif state == "error":
+                self._active_ring.finish(False)
+                self.foot.set_text(
+                    self.s["failed_to"].format(name=self._active_name))
+                self._active_ring = None
             elif self._saw_sending:
                 self._active_ring.finish(True)
                 self.foot.set_text(
