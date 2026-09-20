@@ -19,6 +19,7 @@ TICK_MS = 2000
 SEND_POLL_MS = 700          # only while a send is in flight
 SEND_START_GRACE_MS = 15000  # the sender has this long to appear
 SEND_DEADLINE_MS = 900000    # 15 min, so a ring can never spin forever
+SEND_HOLD_S = 12             # the finished bubble stays this long
 
 STRINGS = {
     "fr": {
@@ -177,6 +178,8 @@ class AirDropWidget(Gtk.Box):
         self._rings = {}
         self._active_ring = None
         self._active_name = ""
+        self._active_ident = None
+        self._last_ring = None
         self._saw_sending = False
         self._send_poll = None
         self._send_waited = 0
@@ -365,10 +368,6 @@ class AirDropWidget(Gtk.Box):
     def _wait_awake(self):
         if self.stack.get_visible_child_name() != "pick":
             return False
-        # Same reason as _on_targets: rebuilding the list would take the
-        # running ring down with it.
-        if self._active_ring is not None:
-            return False
         self._wake_tries += 1
         if self.backend.is_on and self.backend.state != "waking":
             self._fill_picker(busy=True)
@@ -391,6 +390,15 @@ class AirDropWidget(Gtk.Box):
         self._pending = []
 
     def _clear_picker(self):
+        # UNPARENT THE LIVE RING FIRST. The rest of the tree is thrown away,
+        # and the ring has to outlive it: re-creating one would restart the
+        # animation from zero on every browse, and the recipient would appear
+        # to begin its transfer again each time a device came or went.
+        live = self._active_ring or self._last_ring
+        if live is not None:
+            parent = live.get_parent()
+            if parent is not None:
+                parent.set_child(None)
         while (child := self.pick_body.get_first_child()) is not None:
             self.pick_body.remove(child)
 
@@ -401,6 +409,16 @@ class AirDropWidget(Gtk.Box):
 
     def _fill_picker(self, busy=False, label=None):
         self._clear_picker()
+        # THE RECIPIENT OF A RUNNING SEND IS NEVER TAKEN OFF SCREEN. The list
+        # is free to change around it - a device that appears is added, one
+        # that goes away is dropped - but the bubble being sent to stays, even
+        # when the browse no longer lists it, and even when the send fails:
+        # that is the one case where the ring has something to say.
+        shown = list(self._targets)
+        if self._active_ident is not None:
+            if not any(i == self._active_ident for i, _n in shown):
+                shown.insert(0, (self._active_ident, self._active_name))
+            busy = False
         if busy:
             row = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
             spinner = Gtk.Spinner()
@@ -409,7 +427,7 @@ class AirDropWidget(Gtk.Box):
             row.append(Gtk.Label(label=label or self.s["scanning"]))
             self.pick_body.append(row)
             return
-        if not self._targets:
+        if not shown:
             empty = Gtk.Label(label=self.s["none"], wrap=True,
                               justify=Gtk.Justification.CENTER)
             empty.add_css_class("nk-meta")
@@ -432,13 +450,16 @@ class AirDropWidget(Gtk.Box):
                            max_children_per_line=30,
                            halign=Gtk.Align.FILL)
         self._rings = {}
-        for ident, name in self._targets:
+        for ident, name in shown:
             cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
                            halign=Gtk.Align.START)
             # The ring is the overlay's child and the bubble sits on top of it,
             # so the outline can be wider than the avatar without pushing the
             # layout around.
-            ring = _Ring()
+            # Reuse the running ring rather than build a fresh one, so its
+            # phase and its finished state survive the rebuild.
+            live = self._active_ring or self._last_ring
+            ring = (live if ident == self._active_ident and live else _Ring())
             stack = Gtk.Overlay()
             stack.set_child(ring)
             bubble = Gtk.Button(halign=Gtk.Align.CENTER,
@@ -464,13 +485,6 @@ class AirDropWidget(Gtk.Box):
         self._targets = found or []
         if self.stack.get_visible_child_name() != "pick":
             return
-        # NOT WHILE A SEND IS IN FLIGHT. Rebuilding the list destroys every
-        # bubble, including the one carrying the running ring - so a browse
-        # that came back empty mid-transfer replaced the recipient with "no
-        # device found" and took the only progress indicator with it. The
-        # transfer was fine; the panel just stopped saying so.
-        if self._active_ring is not None:
-            return
         self._fill_picker()
 
     def _on_pick(self, _button, ident, name, ring):
@@ -491,6 +505,7 @@ class AirDropWidget(Gtk.Box):
         ring.start()
         self._active_ring = ring
         self._active_name = name
+        self._active_ident = ident
         self._saw_sending = False
         self._send_waited = 0
         self.foot.set_text(self.s["sending_to"].format(name=name))
@@ -509,12 +524,24 @@ class AirDropWidget(Gtk.Box):
         if self._active_ring is None:
             return
         self._active_ring.finish(ok)
+        # Held so a rebuild during the grace window reuses the finished circle
+        # instead of building a fresh, invisible one.
+        self._last_ring = self._active_ring
         self._active_ring = None
         key = "sent_to" if ok else "failed_to"
         self.foot.set_text(self.s[key].format(name=self._active_name))
         if self._send_poll is not None:
             GLib.source_remove(self._send_poll)
             self._send_poll = None
+        # Hold the finished bubble a moment before the list is free to drop it
+        # again. Releasing it here would let the next browse remove the
+        # recipient at the very instant its ring turned green or red.
+        GLib.timeout_add_seconds(SEND_HOLD_S, self._release_recipient)
+
+    def _release_recipient(self):
+        self._active_ident = None
+        self._last_ring = None
+        return False
 
     def _watch_send(self):
         """Close the ring when the sender process is gone.
