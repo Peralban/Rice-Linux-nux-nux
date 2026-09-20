@@ -365,6 +365,10 @@ class AirDropWidget(Gtk.Box):
     def _wait_awake(self):
         if self.stack.get_visible_child_name() != "pick":
             return False
+        # Same reason as _on_targets: rebuilding the list would take the
+        # running ring down with it.
+        if self._active_ring is not None:
+            return False
         self._wake_tries += 1
         if self.backend.is_on and self.backend.state != "waking":
             self._fill_picker(busy=True)
@@ -459,6 +463,13 @@ class AirDropWidget(Gtk.Box):
     def _on_targets(self, found):
         self._targets = found or []
         if self.stack.get_visible_child_name() != "pick":
+            return
+        # NOT WHILE A SEND IS IN FLIGHT. Rebuilding the list destroys every
+        # bubble, including the one carrying the running ring - so a browse
+        # that came back empty mid-transfer replaced the recipient with "no
+        # device found" and took the only progress indicator with it. The
+        # transfer was fine; the panel just stopped saying so.
+        if self._active_ring is not None:
             return
         self._fill_picker()
 
