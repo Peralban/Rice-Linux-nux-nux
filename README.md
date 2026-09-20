@@ -242,7 +242,7 @@ sudo pacman -S --needed \
   hyprland waybar rofi kitty swaync hyprlock hypridle hyprpolkitagent \
   awww matugen-bin thunar yazi adw-gtk-theme \
   gnome-keyring seahorse \
-  brightnessctl hyprpicker playerctl wl-clipboard grim slurp \
+  brightnessctl pamixer hyprpicker playerctl wl-clipboard grim slurp \
   blueman network-manager-applet pavucontrol nwg-displays mission-center \
   docker docker-compose docker-buildx lazydocker \
   python-gobject gtk4 libadwaita gtk4-layer-shell \
