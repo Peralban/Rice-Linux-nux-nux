@@ -30,6 +30,13 @@ input_path = '~/.config/matugen/templates/gtk-colors.css'
 output_path = '~/.config/gtk-4.0/colors.css'
 post_hook = 'pkill -SIGUSR1 -f "Hypr(Whale|Notes)[.]py" || true'
 
+[templates.btop]
+# btop reads neither GTK nor the terminal palette: it loads a named .theme
+# file. No post hook -- it is a TUI, restarted far more often than the
+# wallpaper changes.
+input_path = '~/.config/matugen/templates/btop.theme'
+output_path = '~/.config/btop/themes/matugen.theme'
+
 [templates.zathura]
 # zathura styles itself through its own settings, not GTK CSS, so being a GTK4
 # client buys it nothing. No post hook: each invocation is a fresh process and

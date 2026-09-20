@@ -22,6 +22,7 @@ COMPONENTS=(
   "vicinae|vicinae|le lanceur"
   "gtk|gtk-3.0 gtk-4.0|les thèmes GTK 3 et 4"
   "zathura|zathura|le lecteur PDF"
+  "btop|btop|le moniteur systeme"
   "airdrop||AirDrop : correctifs et outils, voir config/airdrop/README.md"
 )
 
@@ -33,6 +34,7 @@ declare -A SUGGESTS=(
   [hypr]="matugen waybar"
   [swaync]="matugen"
   [zathura]="matugen"
+  [btop]="matugen"
   [gtk]="matugen"
 )
 
