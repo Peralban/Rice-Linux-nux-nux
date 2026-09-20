@@ -226,6 +226,22 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
   color: alpha(@on_surface_variant, 0.5);
 }}
 
+/* Les bulles du selecteur de destinataire : un rond par appareil, comme le
+   panneau de partage d'iOS. Rond veut dire hauteur = largeur ET un rayon qui
+   depasse la moitie, sinon GTK rend un carre aux coins adoucis. */
+.nk-root button.nk-bubble {{
+  min-width: 46px; min-height: 46px; padding: 0;
+  border-radius: 999px;
+  background: alpha(@primary, 0.12);
+  border: 1px solid alpha(@primary, 0.35);
+  color: @primary;
+  box-shadow: none;
+}}
+.nk-root button.nk-bubble:hover {{
+  background: alpha(@primary, 0.24);
+  border-color: @primary;
+}}
+
 /* Action secondaire, posee dans un titre de section : elle ne doit pas
    peser comme un bouton. */
 .nk-root button.nk-link {{
@@ -237,13 +253,6 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root button.nk-link:hover {{ color: @primary; background: none; }}
 .nk-root button.nk-link:disabled {{ opacity: 0.35; }}
 
-.nk-root dropdown.nk-pick > button {{
-  min-height: 24px; padding: 2px 8px;
-  border: none; box-shadow: none; border-radius: 7px;
-  background: alpha(@on_surface, 0.08);
-  font-size: 11px;
-}}
-.nk-root dropdown.nk-pick > button:hover {{ background: alpha(@primary, 0.16); }}
 
 .nk-root switch {{
   min-width: 38px; min-height: 20px;

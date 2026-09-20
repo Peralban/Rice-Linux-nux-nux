@@ -8,9 +8,10 @@ au même titre que le glisser-déposer.
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from ..integrations import airdrop as backend
+from ..integrations import ble
 
 TICK_MS = 2000
 
@@ -18,9 +19,11 @@ STRINGS = {
     "fr": {
         "title": "AIRDROP", "on": "Visible", "off": "Éteint",
         "send": "Envoyer l'étagère", "empty": "Étagère vide",
-        "scan": "Chercher",
-        "scanning": "Recherche…", "none": "Aucun appareil trouvé",
-        "sent": "Envoi lancé", "recv": "Reçus dans ~/Downloads",
+        "pick": "Envoyer à…",
+        "scanning": "Recherche d'appareils…", "none": "Aucun appareil trouvé",
+        "waking": "Allumage de la radio…",
+        "retry": "Chercher à nouveau",
+        "sent": "AirDrop envoyé", "recv": "Reçus dans ~/Downloads",
         "missing": "airdropd introuvable",
         "states": {
             "off": "Éteint", "waking": "Allumage…", "idle": "Visible",
@@ -29,10 +32,7 @@ STRINGS = {
             "error": "Erreur", "missing": "Non installé",
         },
         "hint": {
-            "off": "l'iPhone ne te voit pas",
             "waking": "la radio monte, ~20 s",
-            "armed": "sur l'iPhone : Tout le monde, 10 min",
-            "idle": "sur l'iPhone : Tout le monde, 10 min",
             "switching": "le GO a besoin du 5 GHz",
             "unreachable": "le téléphone est sur un autre canal",
             "sending": "transfert en cours",
@@ -43,9 +43,11 @@ STRINGS = {
     "en": {
         "title": "AIRDROP", "on": "Visible", "off": "Off",
         "send": "Send the shelf", "empty": "Shelf is empty",
-        "scan": "Look",
-        "scanning": "Searching…", "none": "No device found",
-        "sent": "Send started", "recv": "Received in ~/Downloads",
+        "pick": "Send to…",
+        "scanning": "Looking for devices…", "none": "No device found",
+        "waking": "Bringing the radio up…",
+        "retry": "Look again",
+        "sent": "AirDrop sent", "recv": "Received in ~/Downloads",
         "missing": "airdropd not found",
         "states": {
             "off": "Off", "waking": "Waking…", "idle": "Visible",
@@ -54,10 +56,7 @@ STRINGS = {
             "error": "Error", "missing": "Not installed",
         },
         "hint": {
-            "off": "the iPhone cannot see you",
             "waking": "radio coming up, ~20 s",
-            "armed": "on the iPhone: Everyone, 10 min",
-            "idle": "on the iPhone: Everyone, 10 min",
             "switching": "the GO needs 5 GHz",
             "unreachable": "the phone is on another channel",
             "sending": "transfer in progress",
@@ -70,13 +69,31 @@ STRINGS = {
 
 class AirDropWidget(Gtk.Box):
     def __init__(self, lang="fr", shelf=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.s = STRINGS.get(lang, STRINGS["fr"])
         self.shelf = shelf
         self.tick = None
+        self._targets = []
+        self._pending = []
+        self.beacon = ble.Beacon()
+        self._wake_tries = 0
 
         self.backend = backend.AirDrop()
         self.backend.connect(self._on_state)
+
+        # Deux pages plutot qu'une feuille flottante : choisir un destinataire
+        # remplace tout le panneau, comme le panneau de partage d'iOS prend
+        # l'ecran. Une popover aurait laisse l'etat et l'interrupteur visibles
+        # derriere, ce qui invite a cliquer ailleurs au milieu d'un envoi.
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_transition_duration(160)
+        self.stack.add_named(self._build_main(), "main")
+        self.stack.add_named(self._build_picker(), "pick")
+        self.append(self.stack)
+
+    def _build_main(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
 
         # Le logo en grand comme point focal, a la maniere du panneau AirDrop
         # d'Apple : on vient ici pour savoir si la machine est visible, et la
@@ -105,40 +122,51 @@ class AirDropWidget(Gtk.Box):
         self.hint = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
         self.hint.add_css_class("nk-meta")
         hero.append(self.hint)
-        self.append(hero)
+        page.append(hero)
 
-        # Les cibles n'apparaissent que s'il y en a : une liste annoncant
-        # « aucun appareil » prenait la place pour ne rien dire.
-        self.targets = Gtk.DropDown.new_from_strings([self.s["none"]])
-        self.targets.add_css_class("nk-pick")
-        self.targets.set_visible(False)
-        self.append(self.targets)
-        self._targets = []
+        page.append(self._sep())
 
-        self.append(self._sep())
-
-        # Barre de commandes, en bas : l'interrupteur porte l'etat, les deux
-        # actions d'envoi suivent.
+        # Barre de commandes, en bas. L'interrupteur ne gouverne QUE la
+        # reception : envoyer n'a pas besoin qu'on soit deja visible, puisque
+        # `airdropd send` monte la pile lui-meme quand rien ne tourne. Les
+        # griser ensemble laissait croire qu'il fallait s'allumer d'abord.
         bar = Gtk.Box(spacing=8)
         self.switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.switch.connect("state-set", self._on_switch)
         bar.append(self.switch)
 
-        self.scan = Gtk.Button(label=self.s["scan"], valign=Gtk.Align.CENTER,
+        self.send = Gtk.Button(label=self.s["send"], valign=Gtk.Align.CENTER,
                                hexpand=True, halign=Gtk.Align.END)
-        self.scan.add_css_class("nk-link")
-        self.scan.connect("clicked", self._on_scan)
-        bar.append(self.scan)
-
-        self.send = Gtk.Button(label=self.s["send"], valign=Gtk.Align.CENTER)
         self.send.add_css_class("nk-act")
         self.send.connect("clicked", self._on_send)
         bar.append(self.send)
-        self.append(bar)
+        page.append(bar)
 
         self.foot = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
         self.foot.add_css_class("nk-meta")
-        self.append(self.foot)
+        page.append(self.foot)
+        return page
+
+    def _build_picker(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+
+        # Une fleche seule, sans libelle : le geste est evident et un mot de
+        # plus aurait pousse la liste vers le bas.
+        back = Gtk.Button(icon_name="go-previous-symbolic",
+                          halign=Gtk.Align.START)
+        back.add_css_class("nk-link")
+        back.connect("clicked", lambda _b: self._close_picker())
+        page.append(back)
+
+        self.pick_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                 spacing=6, vexpand=True,
+                                 valign=Gtk.Align.CENTER)
+        page.append(self.pick_body)
+        return page
+
+    def _beacon_off(self):
+        self.beacon.stop()
+        return False
 
     @staticmethod
     def _sep():
@@ -159,6 +187,11 @@ class AirDropWidget(Gtk.Box):
         elif not live and self.tick is not None:
             GLib.source_remove(self.tick)
             self.tick = None
+            # Quitter la page pendant que le selecteur est ouvert laisserait
+            # la machine diffuser en BLE sans que rien ne le dise, et on
+            # reviendrait plus tard sur une liste perimee.
+            self._beacon_off()
+            self.stack.set_visible_child_name("main")
 
     def _on_tick(self):
         if self.tick is None:
@@ -176,32 +209,149 @@ class AirDropWidget(Gtk.Box):
             self._render()
         return True
 
-    def _on_scan(self, _button):
-        self.scan.set_sensitive(False)
-        self.foot.set_text(self.s["scanning"])
-        backend.discover(self._on_targets)
-
-    def _on_targets(self, found):
-        self.scan.set_sensitive(True)
-        self._targets = found or []
-        names = [n for _i, n in self._targets] or [self.s["none"]]
-        self.targets.set_model(Gtk.StringList.new(names))
-        self.foot.set_text("" if self._targets else self.s["none"])
-        self._render()
-
-    def _chosen(self):
-        i = self.targets.get_selected()
-        if not self._targets or i == Gtk.INVALID_LIST_POSITION or i >= len(self._targets):
-            return None
-        return self._targets[i][0]
+    # --- le selecteur de destinataire ------------------------------------
+    # Chercher AVANT de vouloir envoyer n'avait pas de sens : la liste etait
+    # vide la plupart du temps, et « aucun appareil trouve » occupait la
+    # place en permanence pour ne rien dire. La recherche part donc au clic
+    # sur Envoyer, et ses resultats s'affichent dans une feuille, comme le
+    # panneau de partage d'iOS.
 
     def _on_send(self, _button):
         paths = list(self.shelf.paths) if self.shelf is not None else []
         if not paths:
             self.foot.set_text(self.s["empty"])
             return
-        ok = self.backend.send(paths, receiver=self._chosen())
+        self._pending = paths
+        self._open_picker()
+
+    def _open_picker(self):
+        # LE SIGNAL BLE D'ABORD. Un iPhone ne s'annonce comme receveur qu'une
+        # fois reveille par une annonce Continuity, et celle que `airdropd
+        # send` enregistre par btmgmt n'atteint pas le telephone sur cette
+        # carte. Sans ca la recherche ne trouve rien et l'echec ressemble a un
+        # probleme de telephone. Mesure : 29 s sans resultat avec btmgmt seul,
+        # trouve en 8 s avec cette annonce-ci.
+        self.beacon.start()
+        self.stack.set_visible_child_name("pick")
+
+        # LA RECHERCHE A BESOIN D'awdl0, pas seulement l'envoi. `opendrop find`
+        # ouvre l'interface, donc la pile eteinte il echoue instantanement et
+        # le selecteur affiche « aucun appareil » sans avoir rien cherche.
+        # L'envoi, lui, monte sa propre pile - d'ou l'interrupteur decouple du
+        # bouton mais pas de la decouverte.
+        if self.backend.is_on:
+            self._fill_picker(busy=True)
+            # 3 s avant de chercher, comme `airdropd send` en accorde au
+            # telephone : l'annonce vient de partir et il lui faut ce temps
+            # pour commencer a s'annoncer. Chercher tout de suite rend
+            # « aucun appareil » alors qu'il etait simplement en retard, ce
+            # qui donne l'impression qu'il faut rearmer Tout le monde.
+            GLib.timeout_add_seconds(3, self._browse_now)
+            return
+        self._fill_picker(busy=True, label=self.s["waking"])
+        self.backend.toggle()
+        self._wake_tries = 0
+        GLib.timeout_add_seconds(2, self._wait_awake)
+
+    def _wait_awake(self):
+        if self.stack.get_visible_child_name() != "pick":
+            return False
+        self._wake_tries += 1
+        if self.backend.is_on and self.backend.state != "waking":
+            self._fill_picker(busy=True)
+            GLib.timeout_add_seconds(3, self._browse_now)
+            return False
+        # ~20 s pour monter la radio, d'apres le projet amont. On laisse une
+        # marge plutot que d'abandonner sur un demarrage un peu lent.
+        if self._wake_tries > 20:
+            self._targets = []
+            self._fill_picker()
+            return False
+        return True
+
+    def _close_picker(self):
+        # L'annonce ne sert qu'a la recherche et a la poignee de main : la
+        # laisser tourner apres ferait diffuser la machine indefiniment sans
+        # que rien dans l'interface ne le dise.
+        self.beacon.stop()
+        self.stack.set_visible_child_name("main")
+        self._pending = []
+
+    def _clear_picker(self):
+        while (child := self.pick_body.get_first_child()) is not None:
+            self.pick_body.remove(child)
+
+    def _browse_now(self):
+        if self.stack.get_visible_child_name() == "pick":
+            backend.discover(self._on_targets)
+        return False
+
+    def _fill_picker(self, busy=False, label=None):
+        self._clear_picker()
+        if busy:
+            row = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+            spinner = Gtk.Spinner()
+            spinner.start()
+            row.append(spinner)
+            row.append(Gtk.Label(label=label or self.s["scanning"]))
+            self.pick_body.append(row)
+            return
+        if not self._targets:
+            empty = Gtk.Label(label=self.s["none"], wrap=True,
+                              justify=Gtk.Justification.CENTER)
+            empty.add_css_class("nk-meta")
+            self.pick_body.append(empty)
+            again = Gtk.Button(label=self.s["retry"], halign=Gtk.Align.CENTER)
+            again.add_css_class("nk-link")
+            again.connect("clicked", lambda _b: self._open_picker())
+            self.pick_body.append(again)
+            return
+        # Des bulles plutot que des lignes, comme le panneau de partage d'iOS :
+        # un avatar rond, le nom dessous. Un clic envoie - pas de selection
+        # puis validation, un seul geste.
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                           homogeneous=True, column_spacing=4,
+                           row_spacing=8, min_children_per_line=2,
+                           max_children_per_line=3,
+                           halign=Gtk.Align.CENTER)
+        for ident, name in self._targets:
+            cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
+                           halign=Gtk.Align.CENTER)
+            bubble = Gtk.Button(halign=Gtk.Align.CENTER)
+            bubble.add_css_class("nk-bubble")
+            icon = Gtk.Image.new_from_icon_name("avatar-default-symbolic")
+            icon.set_pixel_size(28)
+            bubble.set_child(icon)
+            bubble.connect("clicked", self._on_pick, ident)
+            cell.append(bubble)
+            label = Gtk.Label(label=name, max_width_chars=11, wrap=True,
+                              justify=Gtk.Justification.CENTER, lines=2,
+                              ellipsize=Pango.EllipsizeMode.END)
+            label.add_css_class("nk-meta")
+            cell.append(label)
+            flow.append(cell)
+        self.pick_body.append(flow)
+
+    def _on_targets(self, found):
+        self._targets = found or []
+        if self.stack.get_visible_child_name() != "pick":
+            return
+        self._fill_picker()
+
+    def _on_pick(self, _button, ident):
+        paths = self._pending or (
+            list(self.shelf.paths) if self.shelf is not None else [])
+        self.stack.set_visible_child_name("main")
+        if not paths:
+            self.foot.set_text(self.s["empty"])
+            return
+        ok = self.backend.send(paths, receiver=ident)
         self.foot.set_text(self.s["sent"] if ok else self.s["missing"])
+        self._pending = []
+        # Le transfert est lance en arriere-plan : on laisse l'annonce vivre
+        # le temps de la poignee de main, sans quoi le telephone peut nous
+        # perdre entre le choix et le premier paquet.
+        GLib.timeout_add_seconds(20, self._beacon_off)
 
     def _on_state(self, _state, _detail):
         self._render()
@@ -229,7 +379,8 @@ class AirDropWidget(Gtk.Box):
             else:
                 self.logo.remove_css_class(css)
 
+        # PAS `on and has` : l'interrupteur est celui de la reception. Un
+        # envoi monte sa propre pile si rien ne tourne, donc le griser quand
+        # on est eteint refusait une action parfaitement valide.
         has = bool(self.shelf.paths) if self.shelf is not None else False
-        self.send.set_sensitive(on and has)
-        self.scan.set_sensitive(on)
-        self.targets.set_visible(bool(self._targets))
+        self.send.set_sensitive(state != "missing" and has)
