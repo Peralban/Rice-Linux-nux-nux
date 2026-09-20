@@ -1,0 +1,18 @@
+# zathura - settings that do not depend on the wallpaper.
+#
+# Every colour lives in colors.rc, which matugen rewrites on each wallpaper
+# change. An include path is resolved relative to the file being processed, so
+# this picks up the generated file sitting next to it.
+include colors.rc
+
+# Keep documents true to themselves by default: recoloring a scan or a figure
+# is worse than a bright page. Ctrl+R flips it, and the colours it lands on
+# come from the palette.
+set recolor false
+set recolor-keephue true
+
+set font "JetBrainsMono Nerd Font Propo 10"
+set selection-clipboard clipboard
+set adjust-open width
+set statusbar-home-tilde true
+set window-title-basename true

@@ -21,6 +21,7 @@ COMPONENTS=(
   "swaync|swaync|le centre de notifications"
   "vicinae|vicinae|le lanceur"
   "gtk|gtk-3.0 gtk-4.0|les thèmes GTK 3 et 4"
+  "zathura|zathura|le lecteur PDF"
   "airdrop||AirDrop : correctifs et outils, voir config/airdrop/README.md"
 )
 
@@ -31,6 +32,8 @@ declare -A SUGGESTS=(
   [waybar]="matugen"
   [hypr]="matugen waybar"
   [swaync]="matugen"
+  [zathura]="matugen"
+  [gtk]="matugen"
 )
 
 usage() {

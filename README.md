@@ -159,6 +159,7 @@ it, regenerates **twelve files**, then notifies every application concerned:
 | GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes)[.]py"` |
 | GTK 3 | `gtk-3.0/colors.css` | `gtk3-reload.sh` — restart, see Notes |
 | vicinae | `themes/matugen.toml` | `vicinae theme set matugen` |
+| zathura | `zathura/colors.rc` | none — each launch is a fresh process |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | rofi, cava, spicetify, vesktop | — | — |
 
@@ -312,6 +313,7 @@ config/
 │   ├── Modules                base definitions (tray, mpris, backlight…)
 │   ├── configs/               bar layouts
 │   └── style/                 stylesheets
+├── zathura/                   PDF reader, colours included from colors.rc
 ├── matugen/                   palette generation chain
 ├── swaync/themes/             notification centre
 ├── vicinae/                   launcher settings (theme, compact mode, telemetry)
@@ -335,6 +337,14 @@ else.
 `match:class ^(kitty)$`, `float` becomes `float true`, `ignorealpha` becomes
 `ignore_alpha`, and `ignorezero` no longer exists. The `.conf` format itself
 disappears in 0.57 in favour of Lua.
+
+**zathura styles itself, not through GTK.** It is a GTK4 client, so it picks
+up `gtk-4.0/colors.css` like any other — and none of that reaches the document
+view, the statusbar or the completion list, because every one of those is a
+zathura setting rather than a CSS rule. It needs its own generated file,
+included from `zathurarc`. Search highlights have to be translucent to sit on
+top of the text; matugen only emits `rgba()` at full opacity, but GdkRGBA reads
+8-digit hex, so the alpha is written in the template.
 
 **A GTK 3 theme does not read libadwaita's colour names.** Adwaita 3.24
 consumes `@theme_bg_color`, `@theme_base_color` and that family; pointing the
