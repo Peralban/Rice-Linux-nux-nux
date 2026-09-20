@@ -141,7 +141,7 @@ class AirDrop:
             _spawn(["setsid", "-f", "env"] + _environ() + [DAEMON, "run"])
 
     def send(self, paths, receiver=None):
-        """`receiver` est un id du rapport de decouverte, pas un nom."""
+        """`receiver` is an id from the discovery report, not a name."""
         if not paths or not os.access(SENDER, os.X_OK):
             return False
         env = _environ()

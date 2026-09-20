@@ -5,6 +5,8 @@ around. Sending to an iPhone is one more way out of it, no different in kind
 from drag and drop.
 """
 
+import math
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -24,6 +26,7 @@ STRINGS = {
         "waking": "Allumage de la radio…",
         "retry": "Chercher à nouveau",
         "sent": "AirDrop envoyé", "recv": "Reçus dans ~/Downloads",
+        "sending_to": "Envoi vers {name}…", "sent_to": "Envoyé à {name}",
         "missing": "airdropd introuvable",
         "states": {
             "off": "Éteint", "waking": "Allumage…", "idle": "Visible",
@@ -48,6 +51,7 @@ STRINGS = {
         "waking": "Bringing the radio up…",
         "retry": "Look again",
         "sent": "AirDrop sent", "recv": "Received in ~/Downloads",
+        "sending_to": "Sending to {name}…", "sent_to": "Sent to {name}",
         "missing": "airdropd not found",
         "states": {
             "off": "Off", "waking": "Waking…", "idle": "Visible",
@@ -67,6 +71,70 @@ STRINGS = {
 }
 
 
+BUBBLE_PX = 46          # matches .nk-bubble in theme/matugen.py
+RING_PX = 56            # the outline sits outside the bubble, like iOS
+
+
+class _Ring(Gtk.DrawingArea):
+    """The outline iOS draws around a recipient while a send is running.
+
+    DELIBERATELY INDETERMINATE. The daemon publishes a `sending` state, not a
+    byte count, and neither opendrop nor the daemon reports progress, so a
+    proportionally filling arc would be inventing a number. This sweeps while
+    the transfer runs and closes into a full circle once it succeeds, which is
+    the honest version of the same gesture.
+    """
+
+    def __init__(self):
+        super().__init__(content_width=RING_PX, content_height=RING_PX)
+        self.phase = 0.0
+        self.state = "idle"          # idle | busy | done
+        self._tick = None
+        self.set_draw_func(self._draw)
+
+    def start(self):
+        if self._tick is not None:
+            return
+        self.state = "busy"
+        self._tick = self.add_tick_callback(self._advance)
+
+    def finish(self, ok=True):
+        self.state = "done" if ok else "idle"
+        if self._tick is not None:
+            self.remove_tick_callback(self._tick)
+            self._tick = None
+        self.queue_draw()
+
+    def _advance(self, _widget, clock):
+        # One turn per 1.2 s, taken from the frame clock rather than a timer so
+        # it stays smooth when the notch is busy laying out.
+        self.phase = (clock.get_frame_time() / 1_200_000.0) % 1.0
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def _draw(self, _area, cr, width, height):
+        if self.state == "idle":
+            return
+        colour = self.get_color()
+        radius = min(width, height) / 2.0 - 2.0
+        cx, cy = width / 2.0, height / 2.0
+        cr.set_line_width(2.5)
+        cr.set_line_cap(1)          # cairo.LINE_CAP_ROUND
+        if self.state == "done":
+            cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.9)
+            cr.arc(cx, cy, radius, 0, 2 * math.pi)
+            cr.stroke()
+            return
+        # Busy: a quarter-turn arc chasing its own tail.
+        start = self.phase * 2 * math.pi
+        cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.22)
+        cr.arc(cx, cy, radius, 0, 2 * math.pi)
+        cr.stroke()
+        cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.95)
+        cr.arc(cx, cy, radius, start, start + math.pi / 2)
+        cr.stroke()
+
+
 class AirDropWidget(Gtk.Box):
     def __init__(self, lang="fr", shelf=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -74,6 +142,10 @@ class AirDropWidget(Gtk.Box):
         self.shelf = shelf
         self.tick = None
         self._targets = []
+        self._rings = {}
+        self._active_ring = None
+        self._active_name = ""
+        self._saw_sending = False
         self._pending = []
         self.beacon = ble.Beacon()
         self._wake_tries = 0
@@ -158,9 +230,13 @@ class AirDropWidget(Gtk.Box):
         back.connect("clicked", lambda _b: self._close_picker())
         page.append(back)
 
+        # TOP-ALIGNED, not centred: recipients read left to right and wrap
+        # like text, the way the iOS share sheet lays them out. Centring put a
+        # lone device in the middle of the panel, which reads as a dialog
+        # rather than as a list that is about to grow.
         self.pick_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
                                  spacing=6, vexpand=True,
-                                 valign=Gtk.Align.CENTER)
+                                 valign=Gtk.Align.START)
         page.append(self.pick_body)
         return page
 
@@ -308,23 +384,38 @@ class AirDropWidget(Gtk.Box):
         # Bubbles rather than rows, like the iOS share sheet: a round avatar
         # with the name under it. One click sends -- no select-then-confirm,
         # a single gesture.
+        # FILL rather than CENTER, and no homogeneous packing: the row fills
+        # from the left and wraps onto the next line when it runs out of width,
+        # exactly like text. min_children_per_line stays at 1 so a single
+        # device sits at the left edge instead of being centred on its own.
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
-                           homogeneous=True, column_spacing=4,
-                           row_spacing=8, min_children_per_line=2,
-                           max_children_per_line=3,
-                           halign=Gtk.Align.CENTER)
+                           homogeneous=False, column_spacing=10,
+                           row_spacing=10, min_children_per_line=1,
+                           max_children_per_line=30,
+                           halign=Gtk.Align.FILL)
+        self._rings = {}
         for ident, name in self._targets:
             cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
-                           halign=Gtk.Align.CENTER)
-            bubble = Gtk.Button(halign=Gtk.Align.CENTER)
+                           halign=Gtk.Align.START)
+            # The ring is the overlay's child and the bubble sits on top of it,
+            # so the outline can be wider than the avatar without pushing the
+            # layout around.
+            ring = _Ring()
+            stack = Gtk.Overlay()
+            stack.set_child(ring)
+            bubble = Gtk.Button(halign=Gtk.Align.CENTER,
+                                valign=Gtk.Align.CENTER)
             bubble.add_css_class("nk-bubble")
             icon = Gtk.Image.new_from_icon_name("avatar-default-symbolic")
             icon.set_pixel_size(28)
             bubble.set_child(icon)
-            bubble.connect("clicked", self._on_pick, ident)
-            cell.append(bubble)
+            bubble.connect("clicked", self._on_pick, ident, name, ring)
+            stack.add_overlay(bubble)
+            self._rings[ident] = ring
+            cell.append(stack)
             label = Gtk.Label(label=name, max_width_chars=11, wrap=True,
                               justify=Gtk.Justification.CENTER, lines=2,
+                              width_chars=8,
                               ellipsize=Pango.EllipsizeMode.END)
             label.add_css_class("nk-meta")
             cell.append(label)
@@ -337,22 +428,50 @@ class AirDropWidget(Gtk.Box):
             return
         self._fill_picker()
 
-    def _on_pick(self, _button, ident):
+    def _on_pick(self, _button, ident, name, ring):
         paths = self._pending or (
             list(self.shelf.paths) if self.shelf is not None else [])
-        self.stack.set_visible_child_name("main")
+        # STAY ON THE PICKER. Jumping back to the switch hid the only place
+        # where the send is visible, and the panel then looked idle while a
+        # transfer was running. The ring reports progress where the choice was
+        # made, which is also where the eye already is.
         if not paths:
             self.foot.set_text(self.s["empty"])
             return
-        ok = self.backend.send(paths, receiver=ident)
-        self.foot.set_text(self.s["sent"] if ok else self.s["missing"])
+        # THE RING FOLLOWS THE DAEMON, NOT THIS CALL. backend.send() spawns
+        # with `setsid -f` and returns True as soon as the process is started,
+        # so finishing the ring on its return would stop it a millisecond after
+        # it began. The daemon publishes `sending` for the duration, and
+        # _on_state closes the ring when that state is left.
+        ring.start()
+        self._active_ring = ring
+        self._active_name = name
+        self._saw_sending = False
+        self.foot.set_text(self.s["sending_to"].format(name=name))
+        if not self.backend.send(paths, receiver=ident):
+            ring.finish(False)
+            self._active_ring = None
+            self.foot.set_text(self.s["missing"])
+            return
         self._pending = []
         # The transfer is started in the background: the advert is left alive
         # for the handshake, without which the phone can lose us between the
         # choice and the first packet.
         GLib.timeout_add_seconds(20, self._beacon_off)
 
-    def _on_state(self, _state, _detail):
+    def _on_state(self, state, _detail):
+        # Close the ring once the daemon has been through `sending` and come
+        # out of it. Waiting for that state to be SEEN first matters: right
+        # after the click the daemon is still `armed`, and finishing on the
+        # first callback would end the ring before the transfer starts.
+        if self._active_ring is not None:
+            if state == "sending":
+                self._saw_sending = True
+            elif self._saw_sending:
+                self._active_ring.finish(True)
+                self.foot.set_text(
+                    self.s["sent_to"].format(name=self._active_name))
+                self._active_ring = None
         self._render()
 
     def _render(self):
