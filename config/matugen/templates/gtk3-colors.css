@@ -1,0 +1,94 @@
+/*
+* GTK3 colors
+* Generated with Matugen
+*
+* GTK3 themes do not read libadwaita's colour names: Adwaita 3.24 consumes
+* @theme_bg_color, @theme_base_color, @theme_selected_bg_color and friends.
+* The gtk4 template emits the libadwaita set, which is why importing it into
+* gtk-3.0 changed nothing at all. Both sets are defined here so a GTK3 theme
+* mirroring libadwaita (adw-gtk3) keeps working too.
+*/
+
+/* --- GTK3 named colours ------------------------------------------------ */
+
+/* Chrome one step above the views it frames, the way Adwaita dark does it:
+   surface_dim equals surface in a palette this dark, so taking it for both
+   would lay the file list flat on the toolbar with no edge between them. */
+@define-color theme_bg_color {{colors.surface_container_low.default.hex}};
+@define-color theme_fg_color {{colors.on_surface.default.hex}};
+@define-color theme_base_color {{colors.surface.default.hex}};
+@define-color theme_text_color {{colors.on_surface.default.hex}};
+
+@define-color theme_selected_bg_color {{colors.primary.default.hex}};
+@define-color theme_selected_fg_color {{colors.on_primary.default.hex}};
+
+/* An unfocused window keeps the palette; only the selection cools down, so
+   you can still tell which window has the keyboard. */
+@define-color theme_unfocused_bg_color {{colors.surface_container_low.default.hex}};
+@define-color theme_unfocused_fg_color {{colors.on_surface.default.hex}};
+@define-color theme_unfocused_base_color {{colors.surface.default.hex}};
+@define-color theme_unfocused_text_color {{colors.on_surface.default.hex}};
+@define-color theme_unfocused_selected_bg_color {{colors.surface_container_highest.default.hex}};
+@define-color theme_unfocused_selected_fg_color {{colors.on_surface.default.hex}};
+
+@define-color insensitive_bg_color {{colors.surface_container.default.hex}};
+@define-color insensitive_fg_color {{colors.outline.default.hex}};
+@define-color insensitive_base_color {{colors.surface.default.hex}};
+
+@define-color borders {{colors.outline_variant.default.hex}};
+@define-color unfocused_borders {{colors.outline_variant.default.hex}};
+
+@define-color warning_color {{colors.tertiary.default.hex}};
+@define-color error_color {{colors.error.default.hex}};
+@define-color success_color {{colors.primary.default.hex}};
+@define-color link_color {{colors.primary.default.hex}};
+@define-color visited_link_color {{colors.tertiary.default.hex}};
+
+/* Titlebars. Hyprland draws no decoration, but Thunar's own toolbar and any
+   client-side header pick these up. */
+@define-color wm_bg {{colors.surface_container_low.default.hex}};
+@define-color wm_title {{colors.on_surface.default.hex}};
+@define-color wm_unfocused_title {{colors.on_surface_variant.default.hex}};
+@define-color wm_border {{colors.outline_variant.default.hex}};
+@define-color wm_icon_bg {{colors.surface_container_low.default.hex}};
+@define-color wm_icon_fg {{colors.on_surface.default.hex}};
+
+/* Adwaita reads these for text views and the content pane. */
+@define-color content_view_bg {{colors.surface.default.hex}};
+@define-color text_view_bg {{colors.surface.default.hex}};
+
+/* --- libadwaita names, for a GTK3 theme that mirrors them -------------- */
+
+@define-color accent_color {{colors.primary_fixed_dim.default.hex}};
+@define-color accent_fg_color {{colors.on_primary_fixed.default.hex}};
+@define-color accent_bg_color {{colors.primary_fixed_dim.default.hex}};
+@define-color window_bg_color {{colors.surface_dim.default.hex}};
+@define-color window_fg_color {{colors.on_surface.default.hex}};
+@define-color headerbar_bg_color {{colors.surface_dim.default.hex}};
+@define-color headerbar_fg_color {{colors.on_surface.default.hex}};
+@define-color popover_bg_color {{colors.surface_dim.default.hex}};
+@define-color popover_fg_color {{colors.on_surface.default.hex}};
+@define-color view_bg_color {{colors.surface.default.hex}};
+@define-color view_fg_color {{colors.on_surface.default.hex}};
+@define-color card_bg_color {{colors.surface.default.hex}};
+@define-color card_fg_color {{colors.on_surface.default.hex}};
+@define-color sidebar_bg_color @window_bg_color;
+@define-color sidebar_fg_color @window_fg_color;
+@define-color sidebar_border_color @window_bg_color;
+@define-color sidebar_backdrop_color @window_bg_color;
+
+/* --- raw Material You slots, for the rules in gtk.css ------------------ */
+
+@define-color surface {{colors.surface.default.hex}};
+@define-color surface_dim {{colors.surface_dim.default.hex}};
+@define-color surface_container_low {{colors.surface_container_low.default.hex}};
+@define-color surface_container {{colors.surface_container.default.hex}};
+@define-color surface_container_high {{colors.surface_container_high.default.hex}};
+@define-color surface_container_highest {{colors.surface_container_highest.default.hex}};
+@define-color on_surface {{colors.on_surface.default.hex}};
+@define-color on_surface_variant {{colors.on_surface_variant.default.hex}};
+@define-color outline {{colors.outline.default.hex}};
+@define-color outline_variant {{colors.outline_variant.default.hex}};
+@define-color primary {{colors.primary.default.hex}};
+@define-color on_primary {{colors.on_primary.default.hex}};
+@define-color error {{colors.error.default.hex}};

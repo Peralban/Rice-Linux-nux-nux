@@ -156,10 +156,21 @@ it, regenerates **twelve files**, then notifies every application concerned:
 | waybar | `waybar/colors.css` | `pkill -SIGUSR2 waybar` |
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 3 and 4 | `gtk-*/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes)[.]py"` |
+| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes)[.]py"` |
+| GTK 3 | `gtk-3.0/colors.css` | `gtk3-reload.sh` — restart, see Notes |
 | vicinae | `themes/matugen.toml` | `vicinae theme set matugen` |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | rofi, cava, spicetify, vesktop | — | — |
+
+GTK 3 needs one more thing than GTK 4: a theme that actually consumes the
+colour names. `adw-gtk-theme` is libadwaita ported to GTK 3, and it references
+`@window_bg_color` 219 times, so overriding that name in the user stylesheet
+recolours the whole thing. Select it once — this desktop has no XSettings
+daemon and GTK 3 reads GSettings here, not `settings.ini`:
+
+```bash
+gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark
+```
 
 GTK applications inherit the palette because `gtk-3.0/gtk.css` and
 `gtk-4.0/gtk.css` import the `colors.css` matugen writes. **Without those two
@@ -228,7 +239,7 @@ music playing.
 ```bash
 sudo pacman -S --needed \
   hyprland waybar rofi kitty swaync hyprlock hypridle hyprpolkitagent \
-  awww matugen-bin thunar yazi \
+  awww matugen-bin thunar yazi adw-gtk-theme \
   gnome-keyring seahorse \
   brightnessctl hyprpicker playerctl wl-clipboard grim slurp \
   blueman network-manager-applet pavucontrol nwg-displays mission-center \
@@ -324,6 +335,18 @@ else.
 `match:class ^(kitty)$`, `float` becomes `float true`, `ignorealpha` becomes
 `ignore_alpha`, and `ignorezero` no longer exists. The `.conf` format itself
 disappears in 0.57 in favour of Lua.
+
+**A GTK 3 theme does not read libadwaita's colour names.** Adwaita 3.24
+consumes `@theme_bg_color`, `@theme_base_color` and that family; pointing the
+gtk-3.0 template at the gtk-4.0 one generates a file that is imported and then
+ignored in full, which is exactly how Thunar stayed light under a dark rice.
+
+**GTK 3 reads its stylesheet once per process and never again.** Measured on a
+running Thunar: rewriting the imported palette changes nothing, touching
+`gtk.css` changes nothing, and toggling `gtk-theme` through gsettings changes
+nothing. Only a fresh process picks up a new colour — and since Thunar reuses
+its running instance over D-Bus, one stale process would serve the old palette
+to every window it opens from then on.
 
 **`ON_DEMAND` does not mean "take the keyboard", it means "the compositor
 will hand it over on the next click".** Switching to it *during* a click is

@@ -18,8 +18,12 @@ output_path = '~/.config/hypr/colors.conf'
 post_hook = 'hyprctl reload'
 
 [templates.gtk3]
-input_path = '~/.config/matugen/templates/gtk-colors.css'
+# GTK3 themes do not read libadwaita's colour names, so the gtk4 template was
+# inert here: its own template emits @theme_bg_color and the rest of the set
+# Adwaita 3.24 actually consumes.
+input_path = '~/.config/matugen/templates/gtk3-colors.css'
 output_path = '~/.config/gtk-3.0/colors.css'
+post_hook = '~/.config/hypr/scripts/gtk3-reload.sh'
 
 [templates.gtk4]
 input_path = '~/.config/matugen/templates/gtk-colors.css'
