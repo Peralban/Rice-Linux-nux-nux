@@ -189,7 +189,11 @@ tooltip label{
    nothing to the wallpaper and clash with whatever it picks. */
 #custom-hypridle.notactive,
 #idle_inhibitor.activated {
-	color: @primary;
+	/* source_color rather than primary: it is the colour matugen pulled out of
+	   the wallpaper before the tonal palette softened it -- 91% saturation
+	   against 80% -- so the indicator reads as lit without leaving the
+	   palette. */
+	color: @source_color;
 }
 
 #pulseaudio.muted {
