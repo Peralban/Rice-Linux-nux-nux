@@ -166,14 +166,25 @@ class AirDrop:
                 return True
         return False
 
-    def send(self, paths, receiver=None):
-        """`receiver` is an id from the discovery report, not a name."""
+    def send(self, paths, receiver=None, done=None):
+        """`receiver` is an id from the discovery report, not a name.
+
+        `done` is handed the sender's stdout when it exits, so the caller can
+        tell a failed transfer from a successful one. That outcome exists
+        nowhere else: cmd_send prints `sent:` or `FAILED:` and never writes
+        either to the daemon log, so watching the log cannot answer it.
+
+        `setsid` WITHOUT `-f`. With -f the sender forks away and we lose both
+        its exit and its output, which is what made every send look successful.
+        Without it the process is still ours to wait on, and still in a session
+        of its own - so it outlives the notch rather than dying with it.
+        """
         if not paths or not os.access(SENDER, os.X_OK):
             return False
         env = _environ()
         if receiver:
             env.append("AIRDROP_RECEIVER=%s" % receiver)
-        _spawn(["setsid", "-f", "env"] + env + [SENDER] + list(paths))
+        _spawn(["setsid", "env"] + env + [SENDER] + list(paths), done)
         return True
 
 

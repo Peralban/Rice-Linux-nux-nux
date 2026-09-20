@@ -509,12 +509,23 @@ class AirDropWidget(Gtk.Box):
         self._saw_sending = False
         self._send_waited = 0
         self.foot.set_text(self.s["sending_to"].format(name=name))
-        if not self.backend.send(paths, receiver=ident):
+        if not self.backend.send(paths, receiver=ident, done=self._on_sent):
             self._end_ring(False)
             return
         self._pending = []
         if self._send_poll is None:
             self._send_poll = GLib.timeout_add(SEND_POLL_MS, self._watch_send)
+
+    def _on_sent(self, out):
+        """The sender has exited; its own words say how it went.
+
+        A vanished process is not a successful one - that was the bug this
+        replaces, and it turned every failure green. cmd_send prints `FAILED:`
+        per file on the way out and `sent:` otherwise, so the outcome is read
+        from there rather than inferred.
+        """
+        text = out or ""
+        self._end_ring("FAILED:" not in text and bool(text.strip()))
         # The transfer is started in the background: the advert is left alive
         # for the handshake, without which the phone can lose us between the
         # choice and the first packet.
@@ -544,29 +555,31 @@ class AirDropWidget(Gtk.Box):
         return False
 
     def _watch_send(self):
-        """Close the ring when the sender process is gone.
+        """A safety net under _on_sent, not the main path.
 
-        The daemon publishes no `sending` state on the ATTACH path, so the
-        process is the signal. Two guards: the sender takes a moment to appear,
-        so its absence only counts once it has been SEEN; and it is given a
-        deadline, because a ring that never stops is worse than one that stops
-        early.
+        The outcome is read from the sender's own output when it exits. This
+        poll exists for the two cases where that never happens: a sender that
+        never started at all, and one still running long after any plausible
+        transfer. Both close the ring in the error colour, because neither is
+        something we can call a success.
         """
         if self._active_ring is None:
             self._send_poll = None
             return GLib.SOURCE_REMOVE
         self._send_waited += SEND_POLL_MS
+        # The outcome comes from _on_sent. This poll is only here for the case
+        # where the callback never fires at all - a sender that never started,
+        # or one that outlives any sane transfer.
         if self.backend.sending():
             self._saw_sending = True
-        elif self._saw_sending:
-            self._end_ring(True)
-            return GLib.SOURCE_REMOVE
-        elif self._send_waited >= SEND_START_GRACE_MS:
+        elif self._send_waited >= SEND_START_GRACE_MS and not self._saw_sending:
             # Never showed up at all: the send died before it could run.
             self._end_ring(False)
             return GLib.SOURCE_REMOVE
         if self._send_waited >= SEND_DEADLINE_MS:
-            self._end_ring(True)
+            # Fifteen minutes without the sender exiting. We do not know how it
+            # went, and an unknown outcome is not a success.
+            self._end_ring(False)
             return GLib.SOURCE_REMOVE
         return GLib.SOURCE_CONTINUE
 
