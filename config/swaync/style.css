@@ -1,0 +1,12 @@
+/* swaync entry point. The three imports below are the whole theme: without
+   this file swaync falls back to its stock styling, which is why it belongs
+   in the repository rather than sitting untracked in ~/.config.
+
+   The palette path is relative on purpose. GTK resolves a relative @import
+   from the location of the file it is reading -- the symlink in
+   ~/.config/swaync, not its target here -- so this keeps working once
+   install.sh links it. Measured, not assumed. */
+
+@import '../../.config/waybar/colors.css';
+@import 'themes/control_center.css';
+@import 'themes/notifications.css';
