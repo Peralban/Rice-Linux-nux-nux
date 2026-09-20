@@ -1,0 +1,54 @@
+--- a/opendrop/server.py
++++ b/opendrop/server.py
+@@ -722,8 +722,8 @@
+                 if cpio[off:off + 6] != b"070707":
+                     break
+                 try:
+-                    # Champs ODC a position fixe : magic(6) dev(6) ino(6)
+-                    # mode(6) ... namesize a 59, filesize a 65.
++                    # Fixed-position ODC fields: magic(6) dev(6) ino(6)
++                    # mode(6) ... namesize at 59, filesize at 65.
+                     mode = int(cpio[off + 18:off + 24], 8)
+                     namesize = int(cpio[off + 59:off + 65], 8)
+                     filesize = int(cpio[off + 65:off + 76], 8)
+@@ -749,7 +749,14 @@
+                 # bytes deleted when not one file had been recovered. That is
+                 # the .partial guarantee falling over.
+                 regular = (mode & 0o170000) == 0o100000
+-                out.append((name, data_off + filesize <= n, regular))
++                # HOW MANY BYTES ACTUALLY ARRIVED, not just whether the member
++                # is whole. libarchive pads a truncated member out to its
++                # declared size, so the file on disk is the right length and
++                # ends in nulls - measured at 71% padding on one 1.78 MB photo.
++                # The archive itself says where the real data stops: everything
++                # from data_off to the end of what was received.
++                arrived = min(filesize, max(0, n - data_off))
++                out.append((name, data_off + filesize <= n, regular, arrived))
+                 off = data_off + filesize
+             return out
+ 
+@@ -761,7 +768,7 @@
+             failure.
+             """
+             good, bad = [], []
+-            for name, complete, regular in odc_members(cpio_bytes):
++            for name, complete, regular, arrived in odc_members(cpio_bytes):
+                 base = os.path.basename(name)
+                 if not base or base == "." or base.startswith("._"):
+                     continue
+@@ -784,6 +791,15 @@
+                 else:
+                     bad.append(base)
+                     try:
++                        # TRIM THE PADDING BEFORE RENAMING. Keeping it made the
++                        # .partial claim technically true and practically
++                        # useless: the reader cannot tell 512 KB of photo from
++                        # 1.2 MB of nulls behind it, and every tool that opens
++                        # the file walks into the padding. `arrived` comes from
++                        # the archive, so this cuts at the real end rather than
++                        # stripping trailing zeros a file may legitimately have.
++                        if 0 <= arrived < os.path.getsize(path):
++                            os.truncate(path, arrived)
+                         os.replace(path, path + ".partial")
+                     except OSError:
+                         pass
