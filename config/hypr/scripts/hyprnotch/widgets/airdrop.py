@@ -120,19 +120,30 @@ class _Ring(Gtk.DrawingArea):
         cx, cy = width / 2.0, height / 2.0
         cr.set_line_width(2.5)
         cr.set_line_cap(1)          # cairo.LINE_CAP_ROUND
+
         if self.state == "done":
-            cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.9)
+            # Solid, once it has landed: the dashes closing into an unbroken
+            # circle is the whole signal that the transfer finished.
+            cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.95)
             cr.arc(cx, cy, radius, 0, 2 * math.pi)
             cr.stroke()
             return
-        # Busy: a quarter-turn arc chasing its own tail.
-        start = self.phase * 2 * math.pi
-        cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.22)
-        cr.arc(cx, cy, radius, 0, 2 * math.pi)
-        cr.stroke()
+
+        # Busy: a dashed ring turning around the avatar. The context is rotated
+        # rather than the dash offset advanced, because a dash offset walks the
+        # pattern along the path and leaves the gaps standing still at the seam.
         cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.95)
-        cr.arc(cx, cy, radius, start, start + math.pi / 2)
+        cr.save()
+        cr.translate(cx, cy)
+        cr.rotate(self.phase * 2 * math.pi)
+        # Dash and gap in path units, sized so the circumference holds a whole
+        # number of them and the pattern does not jump where the path closes.
+        segments = 12
+        step = 2 * math.pi * radius / segments
+        cr.set_dash([step * 0.45, step * 0.55])
+        cr.arc(0, 0, radius, 0, 2 * math.pi)
         cr.stroke()
+        cr.restore()
 
 
 class AirDropWidget(Gtk.Box):
