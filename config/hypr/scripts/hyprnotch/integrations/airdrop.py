@@ -49,16 +49,25 @@ def _spawn(argv, done=None):
             Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
     except GLib.Error:
         if done is not None:
-            done(None)
+            done(None, False)
         return
 
     def finished(p, result):
+        # The exit status matters as much as the output. airdrop-send pipes
+        # airdropd through a loop to build its notifications, so its stdout
+        # never reaches us - a successful send arrives silent, and reading
+        # silence as failure painted every success red. It does exit with
+        # airdropd's own status, which is the signal that survives the pipe.
         try:
             _, out, _ = p.communicate_utf8_finish(result)
         except GLib.Error:
             out = None
+        try:
+            ok = p.get_successful()
+        except Exception:  # noqa: BLE001 - a status we cannot read is unknown
+            ok = None
         if done is not None:
-            done(out)
+            done(out, ok)
 
     proc.communicate_utf8_async(None, None, finished)
 
@@ -105,7 +114,7 @@ class AirDrop:
             return
         _spawn([DAEMON, "status"], self._on_status)
 
-    def _on_status(self, out):
+    def _on_status(self, out, _ok=None):
         if not out:
             self._set("error", "")
             return

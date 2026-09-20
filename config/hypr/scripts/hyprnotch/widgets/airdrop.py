@@ -516,16 +516,23 @@ class AirDropWidget(Gtk.Box):
         if self._send_poll is None:
             self._send_poll = GLib.timeout_add(SEND_POLL_MS, self._watch_send)
 
-    def _on_sent(self, out):
-        """The sender has exited; its own words say how it went.
+    def _on_sent(self, out, ok=None):
+        """The sender has exited; its exit status says how it went.
 
-        A vanished process is not a successful one - that was the bug this
-        replaces, and it turned every failure green. cmd_send prints `FAILED:`
-        per file on the way out and `sent:` otherwise, so the outcome is read
-        from there rather than inferred.
+        Not its output: airdrop-send pipes airdropd through a loop to build
+        its notifications, so nothing reaches us on stdout and a successful
+        send arrives completely silent. Reading that silence as failure is what
+        painted a success red. The wrapper does exit with airdropd's own
+        status, which survives the pipe.
+
+        A status we could not read at all counts as a failure - an unknown
+        outcome is not a success - but text mentioning FAILED still overrides
+        a zero status, in case the wrapper ever swallows one.
         """
-        text = out or ""
-        self._end_ring("FAILED:" not in text and bool(text.strip()))
+        if out and "FAILED:" in out:
+            self._end_ring(False)
+            return
+        self._end_ring(bool(ok))
         # The transfer is started in the background: the advert is left alive
         # for the handshake, without which the phone can lose us between the
         # choice and the first packet.
