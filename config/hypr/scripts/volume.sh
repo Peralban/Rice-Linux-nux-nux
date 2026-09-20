@@ -36,9 +36,12 @@ notify_user() {
     else
         notify-send -e -h int:value:"$(get_volume | sed 's/%//')" -h string:x-canonical-private-synchronous:volume_notif -u low -i "$(get_icon)" " Volume Level:" " $(get_volume)"
         # Sounds.sh ships with the upstream dotfiles and is not part of this
-        # repository, so guard it rather than failing the chain on every
-        # volume change.
-        [ -x "$sDIR/Sounds.sh" ] && "$sDIR/Sounds.sh" --volume
+        # repository. An `if` rather than a `&&`: as the last statement of the
+        # branch, a failed test would become the function's exit status and
+        # every successful volume change would report failure.
+        if [ -x "$sDIR/Sounds.sh" ]; then
+            "$sDIR/Sounds.sh" --volume
+        fi
     fi
 }
 
