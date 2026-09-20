@@ -54,8 +54,12 @@ output_path = '~/.config/cava/config'
 post_hook = "pkill -USR1 cava"
 
 [templates.spicetify]
+# Spicetify patches Spotify's own asset bundle, so a regenerated color.ini
+# means nothing until it is re-applied. Unlike a stylesheet, nothing re-reads
+# this file on its own.
 input_path = '~/.config/matugen/templates/spotify-colors.ini'
 output_path = '~/.config/spicetify/Themes/text/color.ini'
+post_hook = 'spicetify apply >/dev/null 2>&1 || true'
 
 [templates.vesktop]
 input_path = '~/.config/matugen/templates/midnight-discord.css'
