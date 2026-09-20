@@ -16,6 +16,9 @@ from ..integrations import airdrop as backend
 from ..integrations import ble
 
 TICK_MS = 2000
+SEND_POLL_MS = 700          # only while a send is in flight
+SEND_START_GRACE_MS = 15000  # the sender has this long to appear
+SEND_DEADLINE_MS = 900000    # 15 min, so a ring can never spin forever
 
 STRINGS = {
     "fr": {
@@ -115,9 +118,11 @@ class _Ring(Gtk.DrawingArea):
         self.queue_draw()
 
     def _advance(self, _widget, clock):
-        # One turn per 1.2 s, taken from the frame clock rather than a timer so
-        # it stays smooth when the notch is busy laying out.
-        self.phase = (clock.get_frame_time() / 1_200_000.0) % 1.0
+        # One turn per 3.5 s, taken from the frame clock rather than a timer so
+        # it stays smooth when the notch is busy laying out. Fast enough to
+        # read as motion, slow enough not to pull the eye off the name under
+        # it - the ring is a status, not the subject.
+        self.phase = (clock.get_frame_time() / 3_500_000.0) % 1.0
         self.queue_draw()
         return GLib.SOURCE_CONTINUE
 
@@ -128,8 +133,12 @@ class _Ring(Gtk.DrawingArea):
         radius = min(width, height) / 2.0 - 2.0
         cx, cy = width / 2.0, height / 2.0
         cr.set_line_width(2.5)
-        cr.set_line_cap(1)          # cairo.LINE_CAP_ROUND
 
+        # Round caps on the closed circles, butt caps on the dashes. A round
+        # cap adds half a line width at each end, so on a dashed path every
+        # dash grows into its neighbouring gaps - which is what made the dashes
+        # look uneven and made two of them touch where the path closes.
+        cr.set_line_cap(1)          # cairo.LINE_CAP_ROUND
         if self.state in ("done", "failed"):
             # Solid, once it has landed: the dashes closing into an unbroken
             # circle is the whole signal that the transfer finished. The colour
@@ -149,9 +158,10 @@ class _Ring(Gtk.DrawingArea):
         cr.rotate(self.phase * 2 * math.pi)
         # Dash and gap in path units, sized so the circumference holds a whole
         # number of them and the pattern does not jump where the path closes.
+        cr.set_line_cap(0)          # cairo.LINE_CAP_BUTT
         segments = 12
         step = 2 * math.pi * radius / segments
-        cr.set_dash([step * 0.45, step * 0.55])
+        cr.set_dash([step * 0.5, step * 0.5])
         cr.arc(0, 0, radius, 0, 2 * math.pi)
         cr.stroke()
         cr.restore()
@@ -168,6 +178,8 @@ class AirDropWidget(Gtk.Box):
         self._active_ring = None
         self._active_name = ""
         self._saw_sending = False
+        self._send_poll = None
+        self._send_waited = 0
         self._pending = []
         self.beacon = ble.Beacon()
         self._wake_tries = 0
@@ -469,36 +481,67 @@ class AirDropWidget(Gtk.Box):
         self._active_ring = ring
         self._active_name = name
         self._saw_sending = False
+        self._send_waited = 0
         self.foot.set_text(self.s["sending_to"].format(name=name))
         if not self.backend.send(paths, receiver=ident):
-            ring.finish(False)
-            self._active_ring = None
-            self.foot.set_text(self.s["missing"])
+            self._end_ring(False)
             return
         self._pending = []
+        if self._send_poll is None:
+            self._send_poll = GLib.timeout_add(SEND_POLL_MS, self._watch_send)
         # The transfer is started in the background: the advert is left alive
         # for the handshake, without which the phone can lose us between the
         # choice and the first packet.
         GLib.timeout_add_seconds(20, self._beacon_off)
+
+    def _end_ring(self, ok):
+        if self._active_ring is None:
+            return
+        self._active_ring.finish(ok)
+        self._active_ring = None
+        key = "sent_to" if ok else "failed_to"
+        self.foot.set_text(self.s[key].format(name=self._active_name))
+        if self._send_poll is not None:
+            GLib.source_remove(self._send_poll)
+            self._send_poll = None
+
+    def _watch_send(self):
+        """Close the ring when the sender process is gone.
+
+        The daemon publishes no `sending` state on the ATTACH path, so the
+        process is the signal. Two guards: the sender takes a moment to appear,
+        so its absence only counts once it has been SEEN; and it is given a
+        deadline, because a ring that never stops is worse than one that stops
+        early.
+        """
+        if self._active_ring is None:
+            self._send_poll = None
+            return GLib.SOURCE_REMOVE
+        self._send_waited += SEND_POLL_MS
+        if self.backend.sending():
+            self._saw_sending = True
+        elif self._saw_sending:
+            self._end_ring(True)
+            return GLib.SOURCE_REMOVE
+        elif self._send_waited >= SEND_START_GRACE_MS:
+            # Never showed up at all: the send died before it could run.
+            self._end_ring(False)
+            return GLib.SOURCE_REMOVE
+        if self._send_waited >= SEND_DEADLINE_MS:
+            self._end_ring(True)
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
 
     def _on_state(self, state, _detail):
         # Close the ring once the daemon has been through `sending` and come
         # out of it. Waiting for that state to be SEEN first matters: right
         # after the click the daemon is still `armed`, and finishing on the
         # first callback would end the ring before the transfer starts.
-        if self._active_ring is not None:
-            if state == "sending":
-                self._saw_sending = True
-            elif state == "error":
-                self._active_ring.finish(False)
-                self.foot.set_text(
-                    self.s["failed_to"].format(name=self._active_name))
-                self._active_ring = None
-            elif self._saw_sending:
-                self._active_ring.finish(True)
-                self.foot.set_text(
-                    self.s["sent_to"].format(name=self._active_name))
-                self._active_ring = None
+        # The daemon only reports an outright failure here; completion comes
+        # from _watch_send, because the ATTACH path publishes no state at all
+        # while a transfer runs.
+        if self._active_ring is not None and state == "error":
+            self._end_ring(False)
         self._render()
 
     def _render(self):

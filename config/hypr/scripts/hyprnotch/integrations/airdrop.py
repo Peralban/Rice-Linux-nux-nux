@@ -140,6 +140,32 @@ class AirDrop:
             # setsid: the daemon must outlive the notch, not be its child.
             _spawn(["setsid", "-f", "env"] + _environ() + [DAEMON, "run"])
 
+    def sending(self):
+        """True while a send this widget started is still running.
+
+        THE DAEMON DOES NOT SAY SO. `cmd_send` only publishes the `sending`
+        state on its OWN path, where it has to bring the stack up itself; when
+        it ATTACHes to a daemon that is already armed - which is every send in
+        always-on mode - it deliberately leaves the state alone, because
+        `armed` is still true and reception never stopped. So there is no state
+        transition to watch, and the process itself is the only honest signal
+        that the transfer is still in flight.
+
+        /proc rather than pkill: a pattern wide enough to match the sender also
+        matches the shell looking for it.
+        """
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open("/proc/%s/cmdline" % entry, "rb") as handle:
+                    argv = handle.read().split(b"\0")
+            except OSError:
+                continue
+            if any(a.decode("utf-8", "replace") == SENDER for a in argv):
+                return True
+        return False
+
     def send(self, paths, receiver=None):
         """`receiver` is an id from the discovery report, not a name."""
         if not paths or not os.access(SENDER, os.X_OK):
