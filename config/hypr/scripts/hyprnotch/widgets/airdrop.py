@@ -217,9 +217,12 @@ class AirDropWidget(Gtk.Box):
         # A theme icon rather than a font glyph: the concentric waves ARE the
         # AirDrop mark, and a missing Nerd Font codepoint would have rendered
         # as an empty box.
+        # Sat against the bottom of its space rather than centred in it: the
+        # hero keeps a fixed gap to the rule whatever height the panel gets,
+        # instead of drifting upward every time something below it shrinks.
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
-                       valign=Gtk.Align.CENTER, vexpand=True,
-                       halign=Gtk.Align.CENTER)
+                       valign=Gtk.Align.END, vexpand=True,
+                       halign=Gtk.Align.CENTER, margin_bottom=16)
 
         self.logo = Gtk.Image.new_from_icon_name("network-wireless-symbolic")
         self.logo.set_pixel_size(40)
@@ -234,7 +237,12 @@ class AirDropWidget(Gtk.Box):
         self.state.add_css_class("nk-state")
         hero.append(self.state)
 
-        self.hint = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
+        # Only a few states carry a hint, and an empty label still reserves
+        # its line -- which pushed the whole hero up away from the rule in
+        # every state that has nothing to add. Same rule as the status line
+        # below the controls: no text, no space.
+        self.hint = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER,
+                              visible=False)
         self.hint.add_css_class("nk-meta")
         hero.append(self.hint)
         page.append(hero)
@@ -635,7 +643,9 @@ class AirDropWidget(Gtk.Box):
             self.switch.handler_unblock_by_func(self._on_switch)
 
         self.state.set_text(self.s["states"].get(state, state))
-        self.hint.set_text(self.s["hint"].get(state, ""))
+        hint = self.s["hint"].get(state, "")
+        self.hint.set_text(hint)
+        self.hint.set_visible(bool(hint))
 
         # The logo carries the state: off it stays grey, and it only takes on
         # a colour to flag something out of the ordinary.
