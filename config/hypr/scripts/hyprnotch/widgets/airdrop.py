@@ -36,13 +36,13 @@ STRINGS = {
         "states": {
             "off": "Éteint", "waking": "Allumage…", "idle": "Visible",
             "armed": "Visible", "switching": "Bascule en 5 GHz…",
-            "unreachable": "Visible, hors de portée", "sending": "Envoi…",
+            "unreachable": "Visible, suivi impossible", "sending": "Envoi…",
             "error": "Erreur", "missing": "Non installé",
         },
         "hint": {
             "waking": "la radio monte, ~20 s",
             "switching": "le GO a besoin du 5 GHz",
-            "unreachable": "le téléphone est sur un autre canal",
+            "unreachable": "impossible de suivre son canal",
             "sending": "transfert en cours",
             "error": "voir le journal du démon",
             "missing": "installe airdrop-mt7921",
@@ -62,13 +62,13 @@ STRINGS = {
         "states": {
             "off": "Off", "waking": "Waking…", "idle": "Visible",
             "armed": "Visible", "switching": "Moving to 5 GHz…",
-            "unreachable": "Visible, out of reach", "sending": "Sending…",
+            "unreachable": "Visible, cannot follow", "sending": "Sending…",
             "error": "Error", "missing": "Not installed",
         },
         "hint": {
             "waking": "radio coming up, ~20 s",
             "switching": "the GO needs 5 GHz",
-            "unreachable": "the phone is on another channel",
+            "unreachable": "cannot follow it to its channel",
             "sending": "transfer in progress",
             "error": "check the daemon log",
             "missing": "install airdrop-mt7921",
@@ -77,6 +77,12 @@ STRINGS = {
 }
 
 
+# `unreachable` used to mean "the phone is elsewhere and we are staying put".
+# With AIRDROP_GO_FOLLOW defaulting to 1 the daemon now tries to follow it, and
+# three of its four set_state calls are the follow failing: go_target refusing
+# to build on the wanted channel, or the station's precedence winning. The
+# state is very much alive -- it just reports an attempt rather than an
+# observation, and the wording has to say so.
 BUBBLE_PX = 46          # matches .nk-bubble in theme/matugen.py
 RING_PX = 56            # the outline sits outside the bubble, like iOS
 
