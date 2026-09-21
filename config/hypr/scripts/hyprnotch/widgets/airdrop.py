@@ -257,7 +257,13 @@ class AirDropWidget(Gtk.Box):
         bar.append(self.send)
         page.append(bar)
 
-        self.foot = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
+        # Transient status, under the controls. It is empty most of the time,
+        # and an empty label still reserves its line -- which held the control
+        # bar off the bottom of the panel for no reason. Visibility follows
+        # the text, so the bar sits at the bottom until there is something to
+        # say.
+        self.foot = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER,
+                              visible=False)
         self.foot.add_css_class("nk-meta")
         page.append(self.foot)
         return page
@@ -286,6 +292,11 @@ class AirDropWidget(Gtk.Box):
     def _beacon_off(self):
         self.beacon.stop()
         return False
+
+    def _say(self, text):
+        """Sets the status line and hides it when there is nothing to say."""
+        self.foot.set_text(text or "")
+        self.foot.set_visible(bool(text))
 
     @staticmethod
     def _sep():
@@ -342,7 +353,7 @@ class AirDropWidget(Gtk.Box):
     def _on_send(self, _button):
         paths = list(self.shelf.paths) if self.shelf is not None else []
         if not paths:
-            self.foot.set_text(self.s["empty"])
+            self._say(self.s["empty"])
             return
         self._pending = paths
         self._open_picker()
@@ -506,7 +517,7 @@ class AirDropWidget(Gtk.Box):
         # transfer was running. The ring reports progress where the choice was
         # made, which is also where the eye already is.
         if not paths:
-            self.foot.set_text(self.s["empty"])
+            self._say(self.s["empty"])
             return
         # THE RING FOLLOWS THE DAEMON, NOT THIS CALL. backend.send() spawns
         # with `setsid -f` and returns True as soon as the process is started,
@@ -519,7 +530,7 @@ class AirDropWidget(Gtk.Box):
         self._active_ident = ident
         self._saw_sending = False
         self._send_waited = 0
-        self.foot.set_text(self.s["sending_to"].format(name=name))
+        self._say(self.s["sending_to"].format(name=name))
         if not self.backend.send(paths, receiver=ident, done=self._on_sent):
             self._end_ring(False)
             return
@@ -558,7 +569,7 @@ class AirDropWidget(Gtk.Box):
         self._last_ring = self._active_ring
         self._active_ring = None
         key = "sent_to" if ok else "failed_to"
-        self.foot.set_text(self.s[key].format(name=self._active_name))
+        self._say(self.s[key].format(name=self._active_name))
         if self._send_poll is not None:
             GLib.source_remove(self._send_poll)
             self._send_poll = None
