@@ -24,10 +24,13 @@ LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
 TERMINAL = "kitty"
 REFRESH_MS = 3000
 
+# Kept between the panel and the edges of the monitor.
+MARGIN = 12
+
 T = {
     "fr": {
         "title": "Docker",
-        "engine_up": "Moteur actif", "engine_down": "Moteur arrêté", "engine_busy": "Redémarrage…",
+        "engine_up": "Moteur actif", "engine_down": "Moteur arrêté", "engine_busy": "Redémarrage…", "engine_probe": "Connexion…",
         "denied": "Accès refusé", "denied_sub": "Ton compte n'est pas dans le groupe docker",
         "off_sub": "Démarre le service pour reprendre la main",
         "dashboard": "Tableau de bord", "settings": "Réglages",
@@ -40,13 +43,13 @@ T = {
         "more": "Plus",
         "events": "Événements en direct", "usage": "Ressources en direct", "prune": "Nettoyer le disque",
         "cli": "Terminal Docker", "open_dash": "Ouvrir le tableau de bord",
-        "m_restart": "Redémarrer", "m_logs": "Journaux", "m_inspect": "Inspecter",
+        "restart": "Redémarrer", "m_restart": "Redémarrer", "m_logs": "Journaux", "m_inspect": "Inspecter",
         "m_open": "Ouvrir localhost:{p}", "m_copy": "Copier l'ID", "m_copied": "ID copié",
         "m_remove": "Supprimer",
     },
     "en": {
         "title": "Docker",
-        "engine_up": "Engine running", "engine_down": "Engine stopped", "engine_busy": "Restarting…",
+        "engine_up": "Engine running", "engine_down": "Engine stopped", "engine_busy": "Restarting…", "engine_probe": "Connecting…",
         "denied": "Permission denied", "denied_sub": "Your account is not in the docker group",
         "off_sub": "Start the service to regain control",
         "dashboard": "Dashboard", "settings": "Settings",
@@ -59,7 +62,7 @@ T = {
         "more": "More",
         "events": "Live events", "usage": "Live resources", "prune": "Reclaim disk space",
         "cli": "Docker shell", "open_dash": "Open dashboard",
-        "m_restart": "Restart", "m_logs": "Logs", "m_inspect": "Inspect",
+        "restart": "Restart", "m_restart": "Restart", "m_logs": "Logs", "m_inspect": "Inspect",
         "m_open": "Open localhost:{p}", "m_copy": "Copy ID", "m_copied": "ID copied",
         "m_remove": "Remove",
     },
@@ -137,6 +140,21 @@ def hypr_socket():
 SOCKET = hypr_socket()
 
 
+SELF = 'window="class:dev.local.HyprWhale"'
+
+
+def place(x, y):
+    """Hyprland runs a Lua config here: the legacy `dispatch movewindowpixel
+    exact …` string is rejected by that parser, so we speak its Lua API."""
+    ipc("/eval hl.dispatch(hl.dsp.window.move{exact=true, "
+        f"x={x}, y={y}, {SELF}}})")
+
+
+def resize(width, height):
+    ipc("/eval hl.dispatch(hl.dsp.window.resize{exact=true, "
+        f"x={width}, y={height}, {SELF}}})")
+
+
 def ipc(command):
     """Talks to Hyprland directly: ~0.2 ms, against ~10 ms through hyprctl.
     Fast enough to correct the position on every animation frame."""
@@ -198,11 +216,13 @@ class Whale(Adw.ApplicationWindow):
         self.set_title(self.s["title"])
         self.add_css_class("hw-root")
 
-        self.engine = "unknown"
+        self.engine = "probing"
         self.containers = []
         self.pending = {}
         self.more_open = False
         self.anchor = None
+        self.screen = None
+        self.shape = None
 
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS)
@@ -226,6 +246,9 @@ class Whale(Adw.ApplicationWindow):
         self._closing = None
         self.connect("notify::is-active", self._on_focus)
 
+        # Paint the chrome straight away: waiting for `docker info` before the
+        # first frame is what made the window look slow to open.
+        self._render()
         self.refresh()
         GLib.timeout_add(REFRESH_MS, self._tick)
         GLib.timeout_add(700, self._remember_anchor)
@@ -290,6 +313,8 @@ class Whale(Adw.ApplicationWindow):
             if len(parts) >= 6:
                 items.append(Container(*parts[:6]))
 
+        GLib.idle_add(self._apply, "up", items)
+
         if any(c.state == "running" for c in items):
             stats = docker("stats", "--no-stream", "--format",
                            "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}", timeout=12)
@@ -301,8 +326,7 @@ class Whale(Adw.ApplicationWindow):
             for c in items:
                 if c.name in table:
                     c.cpu, c.mem = table[c.name]
-
-        GLib.idle_add(self._apply, "up", items)
+            GLib.idle_add(self._apply, "up", items)
 
     def _apply(self, engine, items):
         self.engine = engine
@@ -316,6 +340,19 @@ class Whale(Adw.ApplicationWindow):
                     c.pending = want
         self.containers = items
         self._render()
+
+        # The window is mapped as soon as the chrome is drawn, and Hyprland
+        # then keeps whatever size it had. Every time the list changes shape we
+        # ask GTK for its natural height again, so the cards -- and the row of
+        # buttons at their foot -- are never left below the fold.
+        shape = (engine, tuple((c.name, self._state_of(c)) for c in items))
+        if shape != self.shape:
+            self.shape = shape
+            GLib.timeout_add(40, self._fit)
+        return GLib.SOURCE_REMOVE
+
+    def _fit(self):
+        self._hold_anchor(260, follow=True)
         return GLib.SOURCE_REMOVE
 
     # -- rendu -------------------------------------------------------------
@@ -333,6 +370,9 @@ class Whale(Adw.ApplicationWindow):
         self.root.append(self._header())
         self.root.append(self._sep())
         self.root.append(self._menu())
+
+        if self.engine == "probing":
+            return
 
         if self.engine != "up":
             sub = self.s["denied_sub"] if self.engine == "denied" else self.s["off_sub"]
@@ -356,7 +396,8 @@ class Whale(Adw.ApplicationWindow):
         name = Gtk.Label(label=self.s["title"])
         name.add_css_class("hw-title")
 
-        states = {"up": ("engine_up", "hw-run"), "busy": ("engine_busy", "hw-busy")}
+        states = {"up": ("engine_up", "hw-run"), "busy": ("engine_busy", "hw-busy"),
+                  "probing": ("engine_probe", "hw-busy")}
         key, cls = states.get(self.engine, ("engine_down", "hw-down"))
         if self.engine == "denied":
             key = "denied"
@@ -420,7 +461,7 @@ class Whale(Adw.ApplicationWindow):
         sc = Gtk.ScrolledWindow(child=inner)
         sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         sc.set_propagate_natural_height(True)
-        sc.set_max_content_height(250)
+        sc.set_max_content_height(620)
         return sc
 
     def _notice(self, title, subtitle):
@@ -493,7 +534,12 @@ class Whale(Adw.ApplicationWindow):
         dots.set_always_show_arrow(False)
         dots.set_popover(self._context(c, st))
 
-        acts.append(toggle); acts.append(term); acts.append(dots)
+        again = Gtk.Button(label=self.s["restart"])
+        again.add_css_class("hw-act")
+        again.set_sensitive(live)
+        again.connect("clicked", lambda _b: self._simple(c, "restart"))
+
+        acts.append(toggle); acts.append(again); acts.append(term); acts.append(dots)
         for w in (top, meta1, meta2, acts):
             card.append(w)
         return card
@@ -515,7 +561,6 @@ class Whale(Adw.ApplicationWindow):
             b.connect("clicked", lambda _x: (pop.popdown(), cb()))
             box.append(b)
 
-        entry(self.s["m_restart"], lambda: self._simple(c, "restart"), live)
         entry(self.s["m_logs"], lambda: spawn(TERMINAL, "docker", "logs", "-f", c.cid))
         entry(self.s["m_inspect"],
               lambda: spawn(TERMINAL, "sh", "-c", f"docker inspect {c.cid} | less"))
@@ -565,10 +610,9 @@ class Whale(Adw.ApplicationWindow):
             self.more_open = not self.more_open
             rev.set_reveal_child(self.more_open)
             chev.set_label("\u25be" if self.more_open else "\u25b8")
-            if self.more_open:
-                self._hold_anchor(420)
-            else:
-                self._hold_anchor(500, follow=True)
+            # Both ways: the window has to track the revealer's height, or the
+            # entries slide out behind an edge that never moved.
+            self._hold_anchor(500, follow=True)
         head.connect("clicked", toggle)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -610,7 +654,10 @@ class Whale(Adw.ApplicationWindow):
         GLib.timeout_add(3500, lambda: (self.refresh(), GLib.SOURCE_REMOVE)[1])
 
     def _remember_anchor(self):
-        """The windowrule places the window; we remember that top-left corner."""
+        """The windowrule places the window; we read back that top-left corner
+        and the monitor it landed on. Read again before every transition: the
+        user may have moved the window since it opened, and re-anchoring to a
+        stale corner is what used to throw it off the screen."""
         try:
             out = subprocess.run(["hyprctl", "clients", "-j"],
                                  capture_output=True, text=True, timeout=3)
@@ -618,9 +665,30 @@ class Whale(Adw.ApplicationWindow):
                 if c.get("class") == "dev.local.HyprWhale":
                     self.anchor = tuple(c["at"])
                     break
-        except (subprocess.SubprocessError, OSError, ValueError):
+            mon = subprocess.run(["hyprctl", "monitors", "-j"],
+                                 capture_output=True, text=True, timeout=3)
+            for m in json.loads(mon.stdout or "[]"):
+                if m.get("focused") or self.screen is None:
+                    scale = m.get("scale") or 1
+                    self.screen = (m["x"], m["y"],
+                                   round(m["width"] / scale), round(m["height"] / scale))
+                    if m.get("focused"):
+                        break
+        except (subprocess.SubprocessError, OSError, ValueError, KeyError):
             pass
         return GLib.SOURCE_REMOVE
+
+    def _placed(self, height):
+        """The top-left corner to hold, pulled back inside the monitor when the
+        panel has grown past its bottom edge."""
+        x, y = self.anchor
+        if not self.screen:
+            return x, y
+        mx, my, mw, mh = self.screen
+        y = min(y, my + mh - height - MARGIN)
+        y = max(y, my + MARGIN)
+        x = max(mx + MARGIN, min(x, mx + mw - self.get_width() - MARGIN))
+        return x, y
 
     def _reanchor(self):
         """Hyprland grows floating windows around their centre. We put the
@@ -629,8 +697,8 @@ class Whale(Adw.ApplicationWindow):
         step, which is visible."""
         if not self.anchor:
             return GLib.SOURCE_REMOVE
-        ipc(f"/dispatch movewindowpixel exact {self.anchor[0]} {self.anchor[1]},"
-            f"class:dev.local.HyprWhale")
+        x, y = self._placed(self.get_height())
+        place(x, y)
         return GLib.SOURCE_REMOVE
 
     def _hold_anchor(self, duration_ms=420, follow=False):
@@ -640,6 +708,7 @@ class Whale(Adw.ApplicationWindow):
         collapsing we ask it for its minimum on every frame. It then tracks the
         height of the collapsing content instead of staying large and jumping
         at the end."""
+        self._remember_anchor()
         if not self.anchor:
             return
         self._hold_until = duration_ms
@@ -651,8 +720,7 @@ class Whale(Adw.ApplicationWindow):
                 # decreases while collapsing, so the window follows the
                 # animation.
                 _, natural, _, _ = self.measure(Gtk.Orientation.VERTICAL, width)
-                ipc(f"/dispatch resizewindowpixel exact {width} {natural},"
-                    f"class:dev.local.HyprWhale")
+                resize(width, natural)
             self._reanchor()
             self._hold_until -= 16
             return self._hold_until > 0
@@ -667,12 +735,6 @@ class Whale(Adw.ApplicationWindow):
             spawn(TERMINAL, "sh", "-c", f"{command}; printf '\n[terminé] '; read _")
         else:
             spawn(TERMINAL, "sh", "-c", command)
-
-    def _shrink(self):
-        """A reminder: GTK grows a mapped window but never shrinks it. We ask
-        it for its minimum, which it computes from the content."""
-        self._hold_anchor(300, follow=True)
-        return GLib.SOURCE_REMOVE
 
     def _copy(self, cid):
         Gdk.Display.get_default().get_clipboard().set(cid)
