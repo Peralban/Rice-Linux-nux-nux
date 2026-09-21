@@ -59,7 +59,7 @@ post_hook = "pkill -USR1 cava"
 # this file on its own.
 input_path = '~/.config/matugen/templates/spotify-colors.ini'
 output_path = '~/.config/spicetify/Themes/text/color.ini'
-post_hook = 'spicetify apply >/dev/null 2>&1 || true'
+post_hook = 'spicetify apply -n >/dev/null 2>&1 || true'
 
 [templates.vesktop]
 input_path = '~/.config/matugen/templates/midnight-discord.css'
