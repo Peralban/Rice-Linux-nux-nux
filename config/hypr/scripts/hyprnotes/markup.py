@@ -324,7 +324,12 @@ def paste_image(view):
     """A screenshot in the clipboard lands in the note as a file plus its
     marker. Anything else is left to the usual paste."""
     clipboard = view.get_clipboard()
-    if not clipboard.get_formats().contain_gtype(Gdk.Texture.__gtype__):
+    formats = clipboard.get_formats()
+    # On Wayland the offer's type list arrives with the keyboard focus, so it
+    # is briefly empty in a window that has not been focused yet. Empty is not
+    # "no image": claim nothing then, and let the ordinary paste happen.
+    if not (formats.contain_gtype(Gdk.Texture.__gtype__)
+            or formats.contain_mime_type("image/png")):
         return False
     buffer = view.get_buffer()
 
