@@ -292,6 +292,11 @@ class AirDropWidget(Gtk.Box):
         line = Gtk.Box()
         line.add_css_class("nk-sep")
         line.set_size_request(-1, 1)
+        # The hero takes the space it needs and the rule floated well above the
+        # control bar, reading as an underline of the state rather than as the
+        # edge of the controls. Push it down so it sits with what it separates.
+        line.set_margin_top(10)
+        line.set_margin_bottom(2)
         return line
 
     # --- lifecycle ------------------------------------------------------
