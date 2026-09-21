@@ -9,23 +9,31 @@ Three conventions, not one more:
     # Heading      (up to ###)
     **bold**
     - [ ] task     and its ticked form - [x]
+    ![](images/…)  a pasted image, shown in place of its line
 
 The same module serves the app and the notch's tab: the note looks exactly the
 same on both sides.
 """
 
+import os
 import re
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+
+from . import store  # noqa: E402
 
 HEADING = re.compile(r"^(#{1,3})(\s+)(.*)$")
 TODO = re.compile(r"^(\s*)(- \[)([ xX])(\])(\s?)")
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 BULLET = re.compile(r"^(\s*)([-*])(\s+)")
+IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
+
+# An image is never shown taller than this, whatever its own size.
+IMAGE_MAX = 320
 
 # Heading scales, relative to the note's font.
 SCALE = {1: 1.45, 2: 1.20, 3: 1.06}
@@ -45,8 +53,13 @@ def _shade(rgba, alpha):
 class Markup:
     """Dresses up a `Gtk.TextBuffer` and knows how to toggle its checkboxes."""
 
-    def __init__(self, buffer):
+    def __init__(self, buffer, view=None):
         self.buffer = buffer
+        self.view = view
+        # The marker each embedded image stands for, so the note can be saved
+        # back as the plain text it has always been.
+        self.anchors = {}
+        self._busy = False
         self.tags = {}
         table = buffer.get_tag_table()
 
@@ -88,6 +101,93 @@ class Markup:
                 line_end.forward_to_line_end()
             text = buffer.get_text(line_start, line_end, False)
             self._line(number, text)
+
+        self._images()
+
+    # --- images ---------------------------------------------------------
+    def _images(self):
+        """Swaps each `![](…)` line for the picture it names. The marker is
+        kept aside, and `serialize` puts it back: the file on disk stays the
+        plain text it was."""
+        if self.view is None or self._busy:
+            return
+        buffer = self.buffer
+        pending = []
+        for number in range(buffer.get_line_count()):
+            text = self._text_of(number)
+            found = IMAGE.match(text)
+            if found:
+                pending.append((number, text, found.group(2)))
+        if not pending:
+            return
+        # Out of the `changed` emission: rewriting the buffer from inside its
+        # own signal invalidates the iterators the emission is still holding.
+        GLib.idle_add(self._embed_all, pending)
+
+    def _embed_all(self, pending):
+        for number, marker, target in pending:
+            if IMAGE.match(self._text_of(number)):
+                self._embed(number, marker, target)
+        return GLib.SOURCE_REMOVE
+
+    def _embed(self, number, marker, target):
+        picture = self._picture(target)
+        if picture is None:
+            return
+        buffer = self.buffer
+        self._busy = True
+        try:
+            start = buffer.get_iter_at_line(number)[1]
+            end = start.copy()
+            if not end.ends_line():
+                end.forward_to_line_end()
+            # A mark, not an iterator: deleting the line invalidates every
+            # iterator, and we still need that spot afterwards.
+            spot = buffer.create_mark(None, start, True)
+            buffer.delete(start, end)
+            anchor = buffer.create_child_anchor(buffer.get_iter_at_mark(spot))
+            buffer.delete_mark(spot)
+            self.anchors[anchor] = marker
+            self.view.add_child_at_anchor(picture, anchor)
+            picture.show()
+        finally:
+            self._busy = False
+
+    @staticmethod
+    def _picture(target):
+        path = target if os.path.isabs(target) else os.path.join(store.DIR, target)
+        try:
+            texture = Gdk.Texture.new_from_filename(path)
+        except GLib.Error:
+            return None
+        picture = Gtk.Picture(paintable=texture)
+        picture.set_can_shrink(True)
+        picture.set_content_fit(Gtk.ContentFit.SCALE_DOWN)
+        picture.set_halign(Gtk.Align.START)
+        picture.set_margin_top(4)
+        picture.set_margin_bottom(4)
+        height = min(IMAGE_MAX, texture.get_height())
+        width = round(texture.get_width() * height / max(1, texture.get_height()))
+        picture.set_size_request(width, height)
+        return picture
+
+    def serialize(self):
+        """The buffer as text, each embedded image back as its marker."""
+        buffer = self.buffer
+        start, end = buffer.get_bounds()
+        raw = buffer.get_slice(start, end, True)
+        if "\ufffc" not in raw:
+            return raw
+        out = []
+        it = start.copy()
+        for char in raw:
+            if char == "\ufffc":
+                anchor = it.get_child_anchor()
+                out.append(self.anchors.get(anchor, "") if anchor else "")
+            else:
+                out.append(char)
+            it.forward_char()
+        return "".join(out)
 
     def _iter(self, line, offset):
         it = self.buffer.get_iter_at_line(line)[1]
@@ -181,7 +281,7 @@ def attach(view):
     """Wires the rendering to a view: dress up on every keystroke, and a click
     on a box to tick it. Returns the `Markup`."""
     buffer = view.get_buffer()
-    markup = Markup(buffer)
+    markup = Markup(buffer, view)
 
     def restyle(*_):
         markup.apply()
@@ -205,4 +305,41 @@ def attach(view):
 
     click.connect("released", on_release)
     view.add_controller(click)
+
+    keys = Gtk.EventControllerKey()
+    keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_c, keyval, _code, state):
+        ctrl = state & Gdk.ModifierType.CONTROL_MASK
+        if ctrl and keyval in (Gdk.KEY_v, Gdk.KEY_V) and paste_image(view):
+            return Gdk.EVENT_STOP
+        return Gdk.EVENT_PROPAGATE
+
+    keys.connect("key-pressed", on_key)
+    view.add_controller(keys)
     return markup
+
+
+def paste_image(view):
+    """A screenshot in the clipboard lands in the note as a file plus its
+    marker. Anything else is left to the usual paste."""
+    clipboard = view.get_clipboard()
+    if not clipboard.get_formats().contain_gtype(Gdk.Texture.__gtype__):
+        return False
+    buffer = view.get_buffer()
+
+    def done(source, result):
+        try:
+            texture = source.read_texture_finish(result)
+        except GLib.Error:
+            return
+        if texture is None:
+            return
+        path = store.new_image()
+        texture.save_to_png(path)
+        it = buffer.get_iter_at_mark(buffer.get_insert())
+        head = "" if it.starts_line() else "\n"
+        buffer.insert(it, f"{head}![image]({os.path.relpath(path, store.DIR)})\n")
+
+    clipboard.read_texture_async(None, done)
+    return True

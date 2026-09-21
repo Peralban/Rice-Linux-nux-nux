@@ -24,6 +24,19 @@ DIR = os.path.expanduser("~/.local/share/hyprnotes")
 # Pins cannot live in the text without polluting it: a YAML header in a file
 # we promise is "plain" would be a lie.
 STATE = os.path.join(DIR, "state.json")
+IMAGES = os.path.join(DIR, "images")
+
+
+def new_image(ext=".png"):
+    """A fresh path for a pasted image, next to the notes that mention it."""
+    os.makedirs(IMAGES, exist_ok=True)
+    base = time.strftime("%Y%m%d-%H%M%S")
+    path = os.path.join(IMAGES, base + ext)
+    number = 1
+    while os.path.exists(path):
+        path = os.path.join(IMAGES, f"{base}-{number}{ext}")
+        number += 1
+    return path
 
 SUFFIX = ".md"
 

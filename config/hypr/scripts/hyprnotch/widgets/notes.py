@@ -133,8 +133,7 @@ class NotesWidget(Gtk.Box):
         if note_id == self.current and self.dirty:
             return
         buffer = self.text.get_buffer()
-        start, end = buffer.get_bounds()
-        if note_id == self.current and buffer.get_text(start, end, False) == note.text:
+        if note_id == self.current and self.markup.serialize() == note.text:
             return
         offset = buffer.get_property("cursor-position") if note_id == self.current else 0
         self.current = note_id
@@ -171,9 +170,7 @@ class NotesWidget(Gtk.Box):
     def flush(self):
         if not self.dirty or self.current is None:
             return
-        buffer = self.text.get_buffer()
-        start, end = buffer.get_bounds()
-        self.store.write(self.current, buffer.get_text(start, end, False))
+        self.store.write(self.current, self.markup.serialize())
         self.dirty = False
         self.heading.set_text(
             self.store.read(self.current).title(self.s["untitled"]))

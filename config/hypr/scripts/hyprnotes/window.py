@@ -432,9 +432,7 @@ class NotesWindow(Adw.ApplicationWindow):
         could lose it: switching notes, closing, deleting."""
         if not self.dirty or self.current is None:
             return
-        buffer = self.text.get_buffer()
-        start, end = buffer.get_bounds()
-        self.store.write(self.current, buffer.get_text(start, end, False))
+        self.store.write(self.current, self.markup.serialize())
         self.dirty = False
 
     # --- suppression ----------------------------------------------------
@@ -474,8 +472,7 @@ class NotesWindow(Adw.ApplicationWindow):
         if note is None:
             return
         buffer = self.text.get_buffer()
-        start, end = buffer.get_bounds()
-        if buffer.get_text(start, end, False) == note.text:
+        if self.markup.serialize() == note.text:
             return
         # Keep the caret where it was: the note moved, not the intent.
         offset = buffer.get_property("cursor-position")
