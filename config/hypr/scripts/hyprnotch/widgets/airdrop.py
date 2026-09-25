@@ -36,13 +36,13 @@ STRINGS = {
         "states": {
             "off": "Éteint", "waking": "Allumage…", "idle": "Visible",
             "armed": "Visible", "switching": "Bascule en 5 GHz…",
-            "unreachable": "Visible, suivi impossible", "sending": "Envoi…",
+            "unreachable": "Visible, autre canal", "sending": "Envoi…",
             "error": "Erreur", "missing": "Non installé",
         },
         "hint": {
             "waking": "la radio monte, ~20 s",
             "switching": "le GO a besoin du 5 GHz",
-            "unreachable": "impossible de suivre son canal",
+            "unreachable": "le téléphone est ailleurs, on reste avec le Wi-Fi",
             "sending": "transfert en cours",
             "error": "voir le journal du démon",
             "missing": "installe airdrop-mt7921",
@@ -62,13 +62,13 @@ STRINGS = {
         "states": {
             "off": "Off", "waking": "Waking…", "idle": "Visible",
             "armed": "Visible", "switching": "Moving to 5 GHz…",
-            "unreachable": "Visible, cannot follow", "sending": "Sending…",
+            "unreachable": "Visible, other channel", "sending": "Sending…",
             "error": "Error", "missing": "Not installed",
         },
         "hint": {
             "waking": "radio coming up, ~20 s",
             "switching": "the GO needs 5 GHz",
-            "unreachable": "cannot follow it to its channel",
+            "unreachable": "the phone is elsewhere, we stay with the Wi-Fi",
             "sending": "transfer in progress",
             "error": "check the daemon log",
             "missing": "install airdrop-mt7921",
@@ -77,12 +77,20 @@ STRINGS = {
 }
 
 
-# `unreachable` used to mean "the phone is elsewhere and we are staying put".
-# With AIRDROP_GO_FOLLOW defaulting to 1 the daemon now tries to follow it, and
-# three of its four set_state calls are the follow failing: go_target refusing
-# to build on the wanted channel, or the station's precedence winning. The
-# state is very much alive -- it just reports an attempt rather than an
-# observation, and the wording has to say so.
+# `unreachable` says the phone is on a channel we are not on. It does NOT say
+# we tried to follow and failed, which is what "cannot follow" claimed and what
+# the daemon's own comments contradict: of its four set_state calls, the two
+# that fire in the configuration this runs (GO_CHAN=auto, a buildable station
+# channel) are the precedence deciding to stay -- "this is the precedence doing
+# its job rather than a failure", "staying on ch N with the Wi-Fi". Following
+# the phone would move the GO off the station's channel, which is the one thing
+# guaranteed to drop the Wi-Fi.
+#
+# So the wording states the observation and the reason we stay, and the logo
+# does not use nk-busy. That class is for waking and switching, where something
+# is under way and will resolve on its own. Nothing resolves here: the state is
+# stable and correct until the phone moves. Flagging it amber read as a fault
+# being worked on.
 BUBBLE_PX = 46          # matches .nk-bubble in theme/matugen.py
 RING_PX = 56            # the outline sits outside the bubble, like iOS
 
@@ -650,7 +658,8 @@ class AirDropWidget(Gtk.Box):
         # The logo carries the state: off it stays grey, and it only takes on
         # a colour to flag something out of the ordinary.
         for css, want in (("nk-run", state in ("idle", "armed", "sending")),
-                          ("nk-busy", state in ("waking", "switching", "unreachable")),
+                          ("nk-busy", state in ("waking", "switching")),
+                          ("nk-hold", state == "unreachable"),
                           ("nk-down", state in ("error", "missing"))):
             if want:
                 self.logo.add_css_class(css)

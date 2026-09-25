@@ -224,6 +224,7 @@ scrolledwindow, viewport, stack {{ background: transparent; }}
 .nk-root .nk-logo {{ color: alpha(@on_surface, 0.30); }}
 .nk-root .nk-logo.nk-run  {{ color: @primary; }}
 .nk-root .nk-logo.nk-busy {{ color: @tertiary; }}
+.nk-root .nk-logo.nk-hold {{ color: @on_surface_variant; }}
 .nk-root .nk-logo.nk-down {{ color: @error; }}
 .nk-root .nk-name {{ font-weight: 700; font-size: 14px; letter-spacing: 0.3px; }}
 .nk-root .nk-state {{ font-size: 11px; color: @on_surface_variant; }}
