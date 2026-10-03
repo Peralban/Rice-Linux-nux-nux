@@ -194,6 +194,9 @@ class AirDropWidget(Gtk.Box):
         self._active_name = ""
         self._active_ident = None
         self._last_ring = None
+        # A send that finished while the notch was closed, whose outcome the
+        # user has not seen yet. See _end_ring.
+        self._result_unseen = False
         self._saw_sending = False
         self._send_poll = None
         self._send_waited = 0
@@ -335,14 +338,30 @@ class AirDropWidget(Gtk.Box):
             # and the daemon's state will not have moved: without this render
             # the send button would stay greyed in front of a full shelf.
             self._render()
+            if self._result_unseen:
+                # Back for the first time since a send ended out of sight.
+                # The picker was kept for this; now that the outcome is on
+                # screen, start the same hold it would have had.
+                self._result_unseen = False
+                GLib.timeout_add_seconds(SEND_HOLD_S, self._release_recipient)
+            elif self._active_ident is None:
+                # No send to come back to: a picker left over from before is
+                # a stale list with no beacon behind it.
+                self.stack.set_visible_child_name("main")
         elif not live and self.tick is not None:
             GLib.source_remove(self.tick)
             self.tick = None
             # Leaving the page while the picker is open would leave the
-            # machine advertising over BLE with nothing saying so, and we
-            # would come back later to a stale list.
+            # machine advertising over BLE with nothing saying so. The beacon
+            # goes either way; the send in progress does not need it, since
+            # the sender registers its own advert for the transfer.
             self._beacon_off()
-            self.stack.set_visible_child_name("main")
+            # But the VIEW stays when a send is running or just finished.
+            # Resetting it unconditionally meant closing the notch mid-send
+            # and reopening it landed on the main page, with the ring - the
+            # only place the outcome is shown - out of reach.
+            if self._active_ident is None:
+                self.stack.set_visible_child_name("main")
 
     def _on_tick(self):
         if self.tick is None:
@@ -592,7 +611,16 @@ class AirDropWidget(Gtk.Box):
         # Hold the finished bubble a moment before the list is free to drop it
         # again. Releasing it here would let the next browse remove the
         # recipient at the very instant its ring turned green or red.
-        GLib.timeout_add_seconds(SEND_HOLD_S, self._release_recipient)
+        #
+        # Unless nobody is looking. A transfer can take minutes, and the notch
+        # is usually closed for most of them: a hold started now would expire
+        # unseen and the outcome would be gone before it was ever shown. So a
+        # send that ends out of sight keeps its ring until the page is next
+        # opened, and the hold starts from there (set_live).
+        if self.tick is None:
+            self._result_unseen = True
+        else:
+            GLib.timeout_add_seconds(SEND_HOLD_S, self._release_recipient)
 
     def _release_recipient(self):
         self._active_ident = None
