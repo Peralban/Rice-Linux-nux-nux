@@ -216,6 +216,13 @@ hl.config({
 
     input = {
         kb_layout = str(IN, "input:kb_layout", "us"),
+        -- Accents the way macOS does them: a dead key held behind AltGr, so
+        -- ` and ' keep typing themselves. The `intl` variant puts the dead
+        -- keys on the bare keys instead, which makes a shell or a C string a
+        -- minefield. AltGr+` then e -> e-grave, AltGr+' then e -> e-acute,
+        -- AltGr+6 then e -> e-circumflex, AltGr+, -> c-cedilla.
+        kb_variant = str(IN, "input:kb_variant", "altgr-intl"),
+        kb_options = str(IN, "input:kb_options", "lv3:ralt_switch"),
         follow_mouse = num(IN, "input:follow_mouse", 1),
         sensitivity = num(IN, "input:sensitivity", 0),
         accel_profile = str(IN, "input:accel_profile", "flat"),
