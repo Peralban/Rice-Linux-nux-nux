@@ -5,7 +5,10 @@ set = true
 [templates.waybar]
 input_path = '~/.config/matugen/templates/colors.css'
 output_path = '~/.config/waybar/colors.css'
-post_hook = 'pkill -SIGUSR2 waybar'
+# SIGUSR2 makes a live bar re-read its stylesheet. If there is no bar to
+# signal, pkill just fails and the palette changes with nothing wearing it --
+# so start one instead. `setsid -f` detaches it, or it would die with matugen.
+post_hook = 'pkill -SIGUSR2 -x waybar || setsid -f waybar >/dev/null 2>&1'
 
 [templates.kitty]
 input_path = '~/.config/matugen/templates/kitty-colors.conf'
@@ -51,7 +54,9 @@ output_path = '~/.config/rofi/colors.rasi'
 [templates.cava]
 input_path = '~/.config/matugen/templates/matugen-cava'
 output_path = '~/.config/cava/config'
-post_hook = "pkill -USR1 cava"
+# cava only runs while its waybar module is on screen; not signalling a
+# process that is not there is not a failure.
+post_hook = "pkill -USR1 -x cava || true"
 
 [templates.spicetify]
 # Spicetify patches Spotify's own asset bundle, so a regenerated color.ini
