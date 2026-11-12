@@ -70,6 +70,13 @@ post_hook = 'spicetify apply -n >/dev/null 2>&1 || true'
 input_path = '~/.config/matugen/templates/midnight-discord.css'
 output_path = '~/.config/vesktop/themes/matugen.css'
 
+[templates.zed]
+# Zed draws its own interface with GPUI, so it reads no GTK stylesheet at all.
+# What it does read is this: a theme file, watched live, so no post hook. The
+# file carries both appearances, and Zed picks one from the system setting.
+input_path = '~/.config/matugen/templates/zed-theme.json'
+output_path = '~/.config/zed/themes/matugen.json'
+
 [templates.vicinae]
 input_path = '~/.config/matugen/templates/vicinae.toml'
 output_path = '~/.local/share/vicinae/themes/matugen.toml'
