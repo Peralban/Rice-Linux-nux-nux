@@ -307,9 +307,11 @@ hl.window_rule({ name = "open-dialog", match = { initial_title = "(Open Files)" 
 hl.window_rule({ name = "hyprsettings", match = { class = "dev.local.HyprSettings" }, float = true, size = "580 720", center = true })
 hl.window_rule({ name = "hyprkeys", match = { class = "dev.local.HyprKeys" }, float = true, size = "680 780", center = true })
 hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, float = true, move = "1178 66" })
--- under the sound module; the app pins its own top-right corner afterwards
+-- under the sound module; the app pins its own top-right corner afterwards.
+-- Locked (Super+A) it stays open without the focus, and the inactive opacity
+-- on top of its own translucent surface made it unreadable: not for this one.
 hl.window_rule({ name = "hyprduo", match = { class = "dev.local.HyprDuo" }, float = true,
-    move = "(monitor_w-window_w-12) 66" })
+    move = "(monitor_w-window_w-12) 30", opacity = "1.0 override 1.0 override" })
 
 --------------------------------------------------------------------------
 -- REGLES DE COUCHES

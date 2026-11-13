@@ -93,7 +93,7 @@ switcher, themed from the system palette.
 | **HyprSettings** | `Super + Shift + K` | Spacing, decoration, blur, bar, notch, mouse and keyboard |
 | **HyprKeys** | `Super + Shift + /` | Keybinding editor — captures the combination as you press it |
 | **HyprWhale** | click the whale | Docker: containers, start/stop, terminal, logs |
-| **HyprDuo** | right-click the volume | The same sound on several headsets or speakers at once |
+| **HyprDuo** | `Super + A`, or right-click the volume | The same sound on several headsets or speakers at once |
 | **HyprNotch** | `Super + Shift + N`, or hover | Media, calendar, system, file shelf, AirDrop, pinned note |
 | **HyprNotes** | `Super + N` | Notes as plain text files, sidebar at the screen edge |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
@@ -179,6 +179,13 @@ Two headsets on one film, or a speaker next to the laptop: tick the outputs,
 flip *Share the sound*, and everything that plays comes out of all of them.
 Each ticked output keeps its own volume slider, so each listener sets their
 own level.
+
+From the bar it is a menu, gone when the focus leaves. From `Super + A` it is
+**locked**, like the notch on `Super + Shift + N`: the pointer is elsewhere when
+the key is pressed, and with focus following the mouse, the trip to the popup
+crosses other windows — a popup that closed on focus loss was gone before the
+pointer reached it. Locked, it stays (pinned above other windows, on every
+workspace, at full opacity) until `Super + A` again or `Esc`.
 
 Sharing is a `module-combine-sink` loaded into pipewire-pulse — live, nothing
 written into PipeWire's configuration, nothing restarted. It outlives the popup

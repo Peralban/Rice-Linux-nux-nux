@@ -37,6 +37,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 
@@ -44,7 +45,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 APP_ID = "dev.local.HyprDuo"
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
@@ -59,7 +60,7 @@ SINKS = ("hyprduo-a", "hyprduo-b")
 
 WIDTH = 400
 MARGIN = 12
-TOP = 66            # the same line as HyprWhale: just under the bar
+TOP = 30            # fallback; the real one is read from Hyprland, see _monitor
 POLL_MS = 4000      # Bluetooth (pairing, battery) has no event stream here
 
 # Past this many Bluetooth outputs the radio saturates, and the chip shares
@@ -75,10 +76,12 @@ G_LAPTOP = "\U000f0322"
 G_SCREEN = "\U000f0379"
 G_BT = "\U000f00af"
 G_LOGO = "\U000f0d38"      # several speakers
+G_LOCK = "\U000f033e"
 
 T = {
     "fr": {
         "title": "Son partagé", "sink": "Son partagé",
+        "pinned": "Verrouillée : Super + A ou Échap pour fermer",
         "on": "Partagé", "off": "Une sortie",
         "share": "Partager le son",
         "share_sub": "Le même son sur plusieurs sorties à la fois",
@@ -113,6 +116,7 @@ T = {
     },
     "en": {
         "title": "Shared audio", "sink": "Shared audio",
+        "pinned": "Locked: Super + A or Esc to close",
         "on": "Shared", "off": "One output",
         "share": "Share the sound",
         "share_sub": "The same sound on several outputs at once",
@@ -272,6 +276,12 @@ def frame(x, y, width, height):
     ipc("/eval "
         f"hl.dispatch(hl.dsp.window.resize{{exact=true, x={width}, y={height}, {SELF}}}) "
         f"hl.dispatch(hl.dsp.window.move{{exact=true, x={x}, y={y}, {SELF}}})")
+
+
+def pin_on_top():
+    """Hyprland's pin: on every workspace, and above the other floating
+    windows. A locked popup that any window could bury would be no lock."""
+    ipc(f'/eval hl.dispatch(hl.dsp.window.pin({{ action = "enable", {SELF} }}))')
 
 
 def lang():
@@ -549,8 +559,14 @@ def snapshot(selected, names=None):
 # -- the window -------------------------------------------------------------
 
 class Duo(Adw.ApplicationWindow):
-    def __init__(self, app):
+    def __init__(self, app, pinned=False):
         super().__init__(application=app, default_width=WIDTH)
+        # Opened from the keyboard, the pointer is somewhere else on the
+        # screen. With focus following the mouse, the trip to the popup crosses
+        # other windows, and a popup that closes on focus loss is gone before
+        # the pointer arrives. So that one stays until asked to go, like the
+        # notch on Super+Shift+N.
+        self.pinned = pinned
         self.s = T[lang()]
         self.set_title(self.s["title"])
         self.add_css_class("hd-root")
@@ -566,6 +582,7 @@ class Duo(Adw.ApplicationWindow):
         self.menus_open = 0
         self.dirty = False
         self.screen = None
+        self.top = TOP
         self.height = None
         self._probing = False
         self._again = False
@@ -603,7 +620,18 @@ class Duo(Adw.ApplicationWindow):
 
     # -- focus, like a tray menu -------------------------------------------
 
+    def set_pinned(self, pinned):
+        self.pinned = pinned
+        if pinned and self._closing:
+            GLib.source_remove(self._closing)
+            self._closing = None
+        if pinned:
+            pin_on_top()
+        self._show(force=True)
+
     def _on_focus(self, *_):
+        if self.pinned:
+            return
         if self.is_active():
             self._had_focus = True
             if self._closing:
@@ -803,6 +831,11 @@ class Duo(Adw.ApplicationWindow):
         box.append(self._label(G_LOGO, "hd-logo"))
         box.append(self._label(self.s["title"], "hd-title"))
         box.append(Gtk.Box(hexpand=True))
+
+        if self.pinned:
+            lock = self._label(G_LOCK, "hd-meta")
+            lock.set_tooltip_text(self.s["pinned"])
+            box.append(lock)
 
         sharing = bool(self.snap and self.snap.share)
         chip = Gtk.Label(label=f"{self.s['on']} · {len(self.snap.members)}"
@@ -1004,7 +1037,8 @@ class Duo(Adw.ApplicationWindow):
             GLib.idle_add(lambda: (self._render(), GLib.SOURCE_REMOVE)[1])
         # Focus went elsewhere while the menu was up: the focus handler stood
         # aside then, so the closing is ours to start.
-        if self._had_focus and not self.is_active() and self._closing is None:
+        if (not self.pinned and self._had_focus and not self.is_active()
+                and self._closing is None):
             self._closing = GLib.timeout_add(450, self._close_now)
 
     def _hints(self):
@@ -1116,12 +1150,20 @@ class Duo(Adw.ApplicationWindow):
         try:
             mon = subprocess.run(["hyprctl", "monitors", "-j"],
                                  capture_output=True, text=True, timeout=3)
+            reserved = 0
             for m in json.loads(mon.stdout or "[]"):
                 if m.get("focused") or self.screen is None:
                     scale = m.get("scale") or 1
                     self.screen = (m["x"], m["y"],
                                    round(m["width"] / scale), round(m["height"] / scale))
-        except (subprocess.SubprocessError, OSError, ValueError, KeyError):
+                    reserved = (m.get("reserved") or [0, 0])[1]
+            # Level with the top of the tiled windows: the bar's reserved
+            # strip, the outer gap, the border.
+            gap = json.loads(run("hyprctl", "getoption", "general:gaps_out", "-j").stdout)
+            border = json.loads(run("hyprctl", "getoption", "general:border_size", "-j").stdout)
+            top_gap = int(str(gap.get("css", "0")).split()[0])
+            self.top = reserved + top_gap + int(border.get("int", 0))
+        except (subprocess.SubprocessError, OSError, ValueError, KeyError, AttributeError):
             pass
 
     def _fit(self):
@@ -1133,8 +1175,8 @@ class Duo(Adw.ApplicationWindow):
         _, natural, _, _ = self.measure(Gtk.Orientation.VERTICAL, WIDTH)
         if self.screen:
             mx, my, mw, mh = self.screen
-            natural = min(natural, mh - TOP - MARGIN)
-            x, y = mx + mw - WIDTH - MARGIN, my + TOP
+            natural = min(natural, mh - self.top - MARGIN)
+            x, y = mx + mw - WIDTH - MARGIN, my + self.top
         else:
             x, y = None, None
         if natural != self.height and x is not None:
@@ -1144,6 +1186,8 @@ class Duo(Adw.ApplicationWindow):
 
     def _refit(self):
         self.height = None
+        if self.pinned:
+            pin_on_top()
         return self._fit()
 
     # -- actions -----------------------------------------------------------
@@ -1326,24 +1370,37 @@ class Duo(Adw.ApplicationWindow):
 
 
 class App(Adw.Application):
-    def __init__(self):
-        super().__init__(application_id=APP_ID)
+    """`HyprDuo.py` from the bar: a menu, gone when the focus leaves.
+    `HyprDuo.py --pin` from Super+A: stays until the same key, or Esc.
 
-    def do_activate(self):
+    A second launch does not start a second process: GApplication hands its
+    arguments to the one running, and this is where they land."""
+
+    def __init__(self):
+        super().__init__(application_id=APP_ID,
+                         flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+
+    def do_command_line(self, cmdline):
+        pin = "--pin" in cmdline.get_arguments()[1:]
         win = self.props.active_window
-        if win is not None:
+        if win is None:
+            win = Duo(self, pinned=pin)
+            win.present()
+            signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
+        elif win.pinned:
+            win.close()                   # the shortcut again: unlock and go
+        elif pin:
+            win.set_pinned(True)          # opened from the bar, locked from the keyboard
+            win.present()
+        elif win.leaving() or win.is_active():
             # Clicking the bar again: that click took the focus first, so the
             # popup is on its way out. Make it go now rather than come back.
-            # From the keyboard it still has the focus: the same key closes it.
-            if win.leaving() or win.is_active():
-                win.close()
-            else:
-                win.present()
-            return
-        win = Duo(self)
-        win.present()
-        signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
+            win.close()
+        else:
+            win.present()
+        return 0
 
 
 if __name__ == "__main__":
-    App().run(None)
+    # the real argv: run(None) hands GApplication nothing, and --pin never arrives
+    App().run(sys.argv)
