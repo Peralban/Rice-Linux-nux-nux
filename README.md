@@ -113,6 +113,16 @@ Reads and rewrites `keybinds.conf` while preserving comments, ordering and
 formatting. The combination button captures the keys you actually press and
 translates them into Hyprland syntax (`$mainMod SHIFT, S`).
 
+`keybinds.conf` is the only list of shortcuts: `hyprland.lua` reads it on every
+reload and translates each line into `hl.bind`, the way it already reads
+HyprSettings' files. When the Lua config carried its own copy, it was that copy
+Hyprland bound, and anything saved in HyprKeys was silently dead. A line the
+translator does not know (an unsupported dispatcher, a key name Hyprland
+refuses) is skipped and logged to `$XDG_RUNTIME_DIR/hypr-skipped-binds`, and
+HyprKeys says so after saving. If the file yields no shortcut at all, a minimal
+set — terminal, close, HyprKeys, `Super + K`, exit — keeps the desktop usable
+long enough to fix it.
+
 ### HyprNotch
 
 A notch living **inside the bar**, in the spirit of BoringNotch. It takes the

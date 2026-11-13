@@ -3,6 +3,11 @@
 
 Reads and rewrites ~/.config/hypr/configs/keybinds.conf, preserving the
 file's comments, ordering and formatting.
+
+That file is what Hyprland binds: hyprland.lua reads it and translates each
+line on every reload. Whatever it cannot translate it skips, and lists in
+$XDG_RUNTIME_DIR/hypr-skipped-binds -- read back here after saving, so a
+shortcut that did not take is said, not silently lost.
 """
 
 import os
@@ -18,6 +23,11 @@ from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 CONF = os.path.expanduser("~/.config/hypr/configs/keybinds.conf")
 MAIN = os.path.expanduser("~/.config/hypr/hyprland.conf")
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprkeys-lang")
+SKIPPED = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "hypr-skipped-binds")
+
+# One section for everything added here. Two spellings exist in the wild.
+ADDED = "# === Ajouts via HyprKeys ==="
+ADDED_ALSO = ("# === Ajouts via HyprKeys ===", "# === Added through HyprKeys ===")
 
 BIND_RE = re.compile(r"^(bind[a-z]*)\s*=\s*(.*)$")
 
@@ -28,6 +38,7 @@ T = {
         "add": "Nouveau raccourci",
         "save": "Enregistrer",
         "saved": "Enregistré — Hyprland a rechargé",
+        "skipped": "Hyprland n'a pas pu lier {n} raccourci(s) — ligne {line} : {text}",
         "edit_title": "Modifier le raccourci",
         "new_title": "Nouveau raccourci",
         "combo": "Combinaison",
@@ -51,6 +62,7 @@ T = {
         "add": "New shortcut",
         "save": "Save",
         "saved": "Saved — Hyprland reloaded",
+        "skipped": "Hyprland could not bind {n} shortcut(s) — line {line}: {text}",
         "edit_title": "Edit shortcut",
         "new_title": "New shortcut",
         "combo": "Key combination",
@@ -197,7 +209,10 @@ def write_binds(binds, lines):
     if fresh:
         if lines and not lines[-1].endswith("\n"):
             lines.append("\n")
-        lines.append("\n# === Ajouts via HyprKeys ===\n")
+        # The section is opened once and stays the last thing in the file:
+        # new shortcuts go under it rather than each under a heading of its own.
+        if not any(line.strip() in ADDED_ALSO for line in lines):
+            lines.append("\n" + ADDED + "\n")
         lines.extend(b.to_line() for b in fresh)
 
     with open(CONF, "w", encoding="utf-8") as handle:
@@ -500,6 +515,22 @@ class KeysWindow(Adw.ApplicationWindow):
         self.save_button.set_sensitive(False)
         self.refresh_list()
         self.toasts.add_toast(Adw.Toast(title=T[self.lang]["saved"], timeout=2))
+        GLib.timeout_add(400, self._report_skipped)
+
+    def _report_skipped(self):
+        """hyprland.lua has just re-read the file: say what it refused."""
+        try:
+            with open(SKIPPED, encoding="utf-8") as handle:
+                entries = [line.rstrip("\n").split("\t") for line in handle if line.strip()]
+        except OSError:
+            entries = []
+        if entries:
+            first = entries[0]
+            text = first[1] if len(first) > 1 else ""
+            toast = Adw.Toast(title=T[self.lang]["skipped"].format(
+                n=len(entries), line=first[0], text=text), timeout=8)
+            self.toasts.add_toast(toast)
+        return GLib.SOURCE_REMOVE
 
 
 class HyprKeys(Adw.Application):

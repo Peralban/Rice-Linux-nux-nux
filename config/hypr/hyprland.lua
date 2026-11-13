@@ -325,83 +325,137 @@ hl.layer_rule({ match = { namespace = "swaync-notification-window" }, blur = tru
 --------------------------------------------------------------------------
 -- RACCOURCIS
 --------------------------------------------------------------------------
+-- The shortcuts live in configs/keybinds.conf, not here. HyprKeys edits that
+-- file and the cheat sheet lists it; when this file kept a copy of its own,
+-- both kept working on a list Hyprland no longer read, and every shortcut
+-- added through HyprKeys was silently dead. So, as with looknfeel.conf above,
+-- the .conf is read and translated: one source of truth, and the editor is
+-- authoritative.
+--
+-- Anything this cannot translate is skipped and written, with its line, to
+-- $XDG_RUNTIME_DIR/hypr-skipped-binds, which HyprKeys reads back after saving.
 
-local mod = "SUPER"
+local bindfile = configs .. "/keybinds.conf"
+local skipped_log = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/hypr-skipped-binds"
 
--- applications
-hl.bind(mod .. " + Return", hl.dsp.exec_cmd(terminal))
-hl.bind(mod .. " + SHIFT + Return", hl.dsp.exec_cmd("[float; size 800 550] " .. terminal))
-hl.bind(mod .. " + E", hl.dsp.exec_cmd(fileManager))
-hl.bind(mod .. " + SHIFT + E", hl.dsp.exec_cmd("kitty yazi"))
-hl.bind(mod .. " + W", hl.dsp.exec_cmd(menu))
-hl.bind("ALT + space", hl.dsp.exec_cmd("vicinae toggle"))
-hl.bind(mod .. " + B", hl.dsp.exec_cmd("helium-browser"))
-hl.bind(mod .. " + D", hl.dsp.exec_cmd("vesktop"))
-hl.bind(mod .. " + C", hl.dsp.exec_cmd("claude-desktop"))
-hl.bind(mod .. " + S", hl.dsp.exec_cmd("spotify-launcher"))
-hl.bind(mod .. " + ALT + C", hl.dsp.exec_cmd("hyprpicker -a"))
-hl.bind(mod .. " + L", hl.dsp.exec_cmd(scripts .. "/hyprlock.sh"))
-hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(scripts .. "/screenshot.sh"))
-
--- fenetres
-hl.bind(mod .. " + Q", hl.dsp.window.close())
-hl.bind(mod .. " + SHIFT + Q", hl.dsp.exec_cmd(scripts .. "/KillActiveProcess.sh"))
-hl.bind(mod .. " + space", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(mod .. " + SHIFT + F", hl.dsp.window.fullscreen())
-hl.bind(mod .. " + P", hl.dsp.window.pseudo())
-hl.bind(mod .. " + J", hl.dsp.layout("togglesplit"))
-hl.bind("CTRL + ALT + Delete", hl.dsp.exit())
-
--- apparence
-hl.bind(mod .. " + Z", hl.dsp.exec_cmd(scripts .. "/wppicker.sh"))
-hl.bind(mod .. " + R", hl.dsp.exec_cmd(scripts .. "/wbrestart.sh"))
-hl.bind(mod .. " + CTRL + B", hl.dsp.exec_cmd(scripts .. "/WaybarStyles.sh"))
-hl.bind(mod .. " + ALT + B", hl.dsp.exec_cmd(scripts .. "/WaybarLayout.sh"))
-hl.bind(mod .. " + H", hl.dsp.exec_cmd("pkill -SIGUSR1 waybar"))
-
--- config et aide
-hl.bind(mod .. " + slash", hl.dsp.exec_cmd(scripts .. "/CheatSheet.sh"))
-hl.bind(mod .. " + SHIFT + slash", hl.dsp.exec_cmd(scripts .. "/HyprKeys.py"))
-hl.bind(mod .. " + N", hl.dsp.exec_cmd(scripts .. "/HyprNotes.py"))
-hl.bind(mod .. " + A", hl.dsp.exec_cmd(scripts .. "/HyprDuo.py"))
-hl.bind(mod .. " + SHIFT + N", hl.dsp.exec_cmd(
-    "pkill -SIGUSR2 -f HyprNotch.py || " .. scripts .. "/HyprNotch.py"))
-hl.bind(mod .. " + SHIFT + K", hl.dsp.exec_cmd(scripts .. "/HyprSettings.py"))
-hl.bind(mod .. " + K", hl.dsp.exec_cmd("[float; size 1100 750] kitty nano " ..
-    os.getenv("HOME") .. "/.config/hypr/configs/keybinds.conf"))
-
--- focus et deplacement
-for key, dir in pairs({ left = "left", right = "right", up = "up", down = "down" }) do
-    hl.bind(mod .. " + " .. key, hl.dsp.focus({ direction = dir }))
-    hl.bind(mod .. " + CTRL + " .. key, hl.dsp.window.move({ direction = dir }))
+local function trim(text)
+    return (text:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
-hl.bind(mod .. " + SHIFT + left", hl.dsp.window.resize({ x = -50, y = 0, relative = true }), { repeating = true })
-hl.bind(mod .. " + SHIFT + right", hl.dsp.window.resize({ x = 50, y = 0, relative = true }), { repeating = true })
-hl.bind(mod .. " + SHIFT + up", hl.dsp.window.resize({ x = 0, y = -50, relative = true }), { repeating = true })
-hl.bind(mod .. " + SHIFT + down", hl.dsp.window.resize({ x = 0, y = 50, relative = true }), { repeating = true })
+local directions = { l = "left", r = "right", u = "up", d = "down",
+                     left = "left", right = "right", up = "up", down = "down" }
 
--- workspaces
-for i = 1, 10 do
-    local key = i % 10
-    hl.bind(mod .. " + " .. key, hl.dsp.focus({ workspace = i }))
-    hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }))
+-- A workspace argument: a number where it is one ("3"), as is otherwise
+-- ("e+1", "special:magic").
+local function workspace(arg)
+    return tonumber(arg) or arg
 end
 
-hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
-hl.bind(mod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }))
-hl.bind(mod .. " + mouse:272", hl.dsp.window.drag(), { mouse = true })
-hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
+-- dispatcher name -> function(argument, is_mouse_bind) -> hl.dsp action
+local dispatchers = {
+    exec = function(arg) return hl.dsp.exec_cmd(arg) end,
+    killactive = function() return hl.dsp.window.close() end,
+    togglefloating = function() return hl.dsp.window.float({ action = "toggle" }) end,
+    pseudo = function() return hl.dsp.window.pseudo() end,
+    fullscreen = function() return hl.dsp.window.fullscreen() end,
+    layoutmsg = function(arg) return hl.dsp.layout(arg) end,
+    exit = function() return hl.dsp.exit() end,
+    movefocus = function(arg)
+        local dir = directions[arg]
+        return dir and hl.dsp.focus({ direction = dir })
+    end,
+    movewindow = function(arg, mouse)
+        if mouse then return hl.dsp.window.drag() end
+        local dir = directions[arg]
+        return dir and hl.dsp.window.move({ direction = dir })
+    end,
+    resizewindow = function(_, mouse)
+        return mouse and hl.dsp.window.resize()
+    end,
+    resizeactive = function(arg)
+        local x, y = arg:match("^(%-?%d+)%s+(%-?%d+)$")
+        return x and hl.dsp.window.resize({ x = tonumber(x), y = tonumber(y), relative = true })
+    end,
+    workspace = function(arg)
+        return arg ~= "" and hl.dsp.focus({ workspace = workspace(arg) })
+    end,
+    movetoworkspace = function(arg)
+        return arg ~= "" and hl.dsp.window.move({ workspace = workspace(arg) })
+    end,
+}
 
--- touches multimedia
-hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd(scripts .. "/volume.sh --inc"), { locked = true, repeating = true })
-hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd(scripts .. "/volume.sh --dec"), { locked = true, repeating = true })
-hl.bind("XF86AudioMute", hl.dsp.exec_cmd(scripts .. "/volume.sh --toggle"), { locked = true, repeating = true })
-hl.bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd(scripts .. "/brightness.sh --inc"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd(scripts .. "/brightness.sh --dec"), { locked = true, repeating = true })
+-- bindel = e + l. Only the flags this file uses have a Lua spelling here.
+local flags = { e = "repeating", l = "locked", m = "mouse" }
 
-hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
-hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true })
+-- $mainMod and friends: the ones hyprland.conf defined, then whatever the
+-- bind file defines itself.
+local vars = { terminal = terminal, fileManager = fileManager, menu = menu, mainMod = "SUPER" }
+
+local function expand(text)
+    return (text:gsub("%$([%a_][%w_]*)", function(name) return vars[name] end))
+end
+
+local function load_binds(path)
+    local file = io.open(path, "r")
+    if not file then return 0, {} end
+    local count, skipped, number = 0, {}, 0
+    for raw in file:lines() do
+        number = number + 1
+        -- HyprKeys reads a comment from the first #, so the same rule here
+        local line = raw:gsub("#.*$", "")
+        local name, value = line:match("^%s*%$([%a_][%w_]*)%s*=%s*(.-)%s*$")
+        if name then
+            vars[name] = value
+        else
+            local kind, body = line:match("^%s*bind(%a*)%s*=%s*(.-)%s*$")
+            if kind then
+                local mods, key, dispatcher, arg = body:match("^([^,]*),([^,]*),([^,]*),?(.*)$")
+                local options = {}
+                for letter in kind:gmatch(".") do
+                    if flags[letter] then options[flags[letter]] = true end
+                end
+                local action
+                if mods then
+                    local make = dispatchers[trim(dispatcher)]
+                    action = make and make(expand(trim(arg)), options.mouse)
+                end
+                if action then
+                    local combo = {}
+                    for part in expand(mods):gmatch("%S+") do combo[#combo + 1] = part end
+                    combo[#combo + 1] = trim(key)
+                    -- One key name Hyprland refuses must not take every line
+                    -- after it down with it: an error would end the file here.
+                    local ok, err = pcall(hl.bind, table.concat(combo, " + "), action,
+                                          next(options) and options or nil)
+                    if ok then
+                        count = count + 1
+                    else
+                        skipped[#skipped + 1] = number .. "\t" .. trim(raw) .. "\t" .. tostring(err)
+                    end
+                else
+                    skipped[#skipped + 1] = number .. "\t" .. trim(raw)
+                end
+            end
+        end
+    end
+    file:close()
+    return count, skipped
+end
+
+local count, skipped = load_binds(bindfile)
+
+local log = io.open(skipped_log, "w")
+if log then
+    for _, entry in ipairs(skipped) do log:write(entry, "\n") end
+    log:close()
+end
+
+-- An unreadable or emptied file must not leave the desktop without a
+-- keyboard: the shortcuts needed to repair it, and nothing more.
+if count == 0 then
+    hl.bind("SUPER + Return", hl.dsp.exec_cmd(terminal))
+    hl.bind("SUPER + Q", hl.dsp.window.close())
+    hl.bind("SUPER + SHIFT + slash", hl.dsp.exec_cmd(scripts .. "/HyprKeys.py"))
+    hl.bind("SUPER + K", hl.dsp.exec_cmd("[float; size 1100 750] kitty nano " .. bindfile))
+    hl.bind("CTRL + ALT + Delete", hl.dsp.exit())
+end
