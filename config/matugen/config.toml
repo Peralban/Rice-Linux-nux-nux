@@ -31,7 +31,7 @@ post_hook = '~/.config/hypr/scripts/gtk3-reload.sh'
 [templates.gtk4]
 input_path = '~/.config/matugen/templates/gtk-colors.css'
 output_path = '~/.config/gtk-4.0/colors.css'
-post_hook = 'pkill -SIGUSR1 -f "Hypr(Whale|Notes)[.]py" || true'
+post_hook = 'pkill -SIGUSR1 -f "Hypr(Whale|Notes|Duo)[.]py" || true'
 
 [templates.btop]
 # btop reads neither GTK nor the terminal palette: it loads a named .theme

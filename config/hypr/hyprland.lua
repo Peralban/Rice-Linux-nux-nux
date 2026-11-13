@@ -303,10 +303,13 @@ hl.window_rule({
 hl.window_rule({ name = "save-dialog", match = { title = "^(Save As|Save a File|Pick Files)$" }, float = true, size = "50% 60%", center = true })
 hl.window_rule({ name = "open-dialog", match = { initial_title = "(Open Files)" }, float = true, size = "70% 60%" })
 
--- the four in-house panels (notes tile, so no rule)
+-- the in-house panels (notes tile, so no rule)
 hl.window_rule({ name = "hyprsettings", match = { class = "dev.local.HyprSettings" }, float = true, size = "580 720", center = true })
 hl.window_rule({ name = "hyprkeys", match = { class = "dev.local.HyprKeys" }, float = true, size = "680 780", center = true })
 hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, float = true, move = "1178 66" })
+-- under the sound module; the app pins its own top-right corner afterwards
+hl.window_rule({ name = "hyprduo", match = { class = "dev.local.HyprDuo" }, float = true,
+    move = "(monitor_w-window_w-12) 66" })
 
 --------------------------------------------------------------------------
 -- REGLES DE COUCHES

@@ -323,7 +323,9 @@
 	},
 	"scroll-step": 5.0,
 	"on-click": "$HOME/.config/hypr/scripts/volume.sh --toggle",
-	"on-click-right": "pavucontrol -t 3",
+	// Right-click: share the sound across outputs. The full mixer is one
+	// entry away inside it.
+	"on-click-right": "$HOME/.config/hypr/scripts/HyprDuo.py",
 	"on-scroll-up": "$HOME/.config/hypr/scripts/volume.sh --inc",
 	"on-scroll-down": "$HOME/.config/hypr/scripts/volume.sh --dec",
 	"tooltip-format": "{icon} {desc} | {volume}%",

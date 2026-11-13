@@ -2,7 +2,7 @@
 
 A Hyprland desktop on Arch Linux, grown out of the
 [JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) dotfiles and rebuilt
-around five hand-written GTK4 applications.
+around six hand-written GTK4 applications.
 
 One rule governs the whole repository: **no colour is ever written by hand.**
 The wallpaper decides the palette, and fourteen surfaces follow it — the bar,
@@ -48,7 +48,7 @@ it, regenerates one file per target, and tells each one to look again.
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | hyprlock | reads `hypr/colors.conf` | sourced at launch |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes)[.]py"` |
+| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo)[.]py"` |
 | GTK 3 | `gtk-3.0/colors.css` | `gtk3-reload.sh` — restart, see Notes |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | swaync | imports `waybar/colors.css` | `swaync-client -rs` |
@@ -83,7 +83,7 @@ writes is `extensions.theme.system_theme`, not the `browser.theme` family.
 
 ---
 
-## The five applications
+## The applications
 
 Python + GTK4 / libadwaita, bilingual French / English with a language
 switcher, themed from the system palette.
@@ -93,6 +93,7 @@ switcher, themed from the system palette.
 | **HyprSettings** | `Super + Shift + K` | Spacing, decoration, blur, bar, notch, mouse and keyboard |
 | **HyprKeys** | `Super + Shift + /` | Keybinding editor — captures the combination as you press it |
 | **HyprWhale** | click the whale | Docker: containers, start/stop, terminal, logs |
+| **HyprDuo** | right-click the volume | The same sound on several headsets or speakers at once |
 | **HyprNotch** | `Super + Shift + N`, or hover | Media, calendar, system, file shelf, AirDrop, pinned note |
 | **HyprNotes** | `Super + N` | Notes as plain text files, sidebar at the screen edge |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
@@ -161,6 +162,33 @@ stay red even under a green accent.
 
 The `⋯` context menu adapts to state — *Remove* is greyed out on a running
 container, *Open localhost:port* on a stopped one.
+
+### HyprDuo
+
+Two headsets on one film, or a speaker next to the laptop: tick the outputs,
+flip *Share the sound*, and everything that plays comes out of all of them.
+Each ticked output keeps its own volume slider, so each listener sets their
+own level.
+
+Sharing is a `module-combine-sink` loaded into pipewire-pulse — live, nothing
+written into PipeWire's configuration, nothing restarted. It outlives the popup
+and lasts until you switch it off or log out. PipeWire turns the module's list
+of outputs into match rules, so a headset that goes out of range and comes back
+**rejoins the share on its own**. The argument is `sinks=`: the PulseAudio-era
+`slaves=` is accepted and silently ignored, and the module then combines every
+output on the machine.
+
+Bluetooth outputs each have their own latency, so the module runs with
+`latency_compensate=true`, and each output's `⋯` menu adds a manual offset for
+the echo that remains when two speakers share a room. The same menu switches
+the codec (SBC copes best with several devices), and a headset that dropped to
+hands-free for its microphone gets a button back to A2DP. The popup warns past
+two Bluetooth outputs, where the radio — which shares its antenna with the
+Wi-Fi — starts to drop out.
+
+Sharing is deliberately **not** restored at login: the headsets are not
+connected yet then, and a default output with nothing behind it is silence.
+What it remembers, in `~/.local/state/hyprduo.json`, is which outputs you tick.
 
 ---
 
@@ -252,7 +280,8 @@ sudo pacman -S --needed \
   awww matugen-bin thunar yazi adw-gtk-theme zathura zathura-pdf-mupdf \
   gnome-keyring seahorse \
   brightnessctl pamixer hyprpicker playerctl wl-clipboard grim slurp \
-  blueman network-manager-applet pavucontrol nwg-displays mission-center \
+  blueman bluez-utils pipewire-pulse network-manager-applet pavucontrol \
+  nwg-displays mission-center \
   tumbler poppler-glib ffmpegthumbnailer libgsf libgepub libopenraw \
   docker docker-compose docker-buildx lazydocker \
   python-gobject gtk4 libadwaita gtk4-layer-shell \
