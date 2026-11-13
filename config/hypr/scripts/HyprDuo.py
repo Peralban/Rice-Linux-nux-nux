@@ -413,6 +413,16 @@ def current_share():
     return None, None
 
 
+def configured_sink():
+    """The output the user *chose*, as WirePlumber keeps it -- not the one in
+    use. They differ: with nothing chosen, WirePlumber picks by priority and
+    a headset outranks the speakers. Pinning the one in use instead is what
+    made the speakers stick after the share, headset or not."""
+    out = run("pw-metadata", "0", "default.configured.audio.sink", timeout=3)
+    m = re.search(r'"name"\s*:\s*"([^"]+)"', out.stdout if out else "")
+    return m.group(1) if m and m.group(1) not in SINKS else None
+
+
 def bluetooth():
     """(power, {mac: (name, connected, glyph, battery)}) for audio devices."""
     if shutil.which("bluetoothctl") is None:
@@ -1246,11 +1256,8 @@ class Duo(Adw.ApplicationWindow):
             return
         share, module = current_share()
         if share is None:
-            out = pactl("get-default-sink")
-            default = out.stdout.strip() if out and out.returncode == 0 else None
-            if default and default not in SINKS:
-                self.state["previous"] = default
-                save_state(self.state)
+            self.state["configured"] = configured_sink()
+            save_state(self.state)
         name = SINKS[1] if share == SINKS[0] else SINKS[0]
         desc = self.s["sink"].replace("'", "’")
         out = pactl("load-module", "module-combine-sink", f"sink_name={name}",
@@ -1263,13 +1270,16 @@ class Duo(Adw.ApplicationWindow):
             pactl("unload-module", str(module))
 
     def _stop(self):
-        share, module = current_share()
-        back = self.state.get("previous")
-        present = {s.get("name") for s in pactl_json("list", "sinks")} - set(SINKS)
-        if back not in present:
-            back = next((n for n in self.selected if n in present), None)
-        if back:
-            pactl("set-default-sink", back)
+        """Put WirePlumber's *choice* back the way it was, not the output that
+        happened to be playing: re-choosing the same name changes nothing, and
+        with no choice before, there is none after either, so priority (and a
+        headset that connects later) still decides."""
+        _share, module = current_share()
+        before = self.state.get("configured")
+        if before:
+            pactl("set-default-sink", before)
+        else:
+            run("pw-metadata", "-d", "0", "default.configured.audio.sink", timeout=3)
         if module is not None:
             pactl("unload-module", str(module))
 
@@ -1324,7 +1334,8 @@ class App(Adw.Application):
         if win is not None:
             # Clicking the bar again: that click took the focus first, so the
             # popup is on its way out. Make it go now rather than come back.
-            if win.leaving():
+            # From the keyboard it still has the focus: the same key closes it.
+            if win.leaving() or win.is_active():
                 win.close()
             else:
                 win.present()

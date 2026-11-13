@@ -363,6 +363,7 @@ hl.bind(mod .. " + H", hl.dsp.exec_cmd("pkill -SIGUSR1 waybar"))
 hl.bind(mod .. " + slash", hl.dsp.exec_cmd(scripts .. "/CheatSheet.sh"))
 hl.bind(mod .. " + SHIFT + slash", hl.dsp.exec_cmd(scripts .. "/HyprKeys.py"))
 hl.bind(mod .. " + N", hl.dsp.exec_cmd(scripts .. "/HyprNotes.py"))
+hl.bind(mod .. " + A", hl.dsp.exec_cmd(scripts .. "/HyprDuo.py"))
 hl.bind(mod .. " + SHIFT + N", hl.dsp.exec_cmd(
     "pkill -SIGUSR2 -f HyprNotch.py || " .. scripts .. "/HyprNotch.py"))
 hl.bind(mod .. " + SHIFT + K", hl.dsp.exec_cmd(scripts .. "/HyprSettings.py"))
