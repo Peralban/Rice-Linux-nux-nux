@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """HyprDuo -- the same sound on several outputs at once (bilingual FR / EN).
 
-Two headphones on one film, a speaker plus the laptop: tick the outputs, flip
-the switch, and PipeWire plays everything on all of them together.
+Two headphones on one film, a speaker plus the laptop: the ticks are where the
+sound goes. One ticked is an ordinary output; tick a second and PipeWire plays
+everything on all of them together. There is no switch on top of that.
 
 How it works, so the next reader does not have to dig:
 
@@ -24,7 +25,7 @@ How it works, so the next reader does not have to dig:
 
 Sharing is deliberately not restored at login: at that moment the headsets are
 not connected yet, and a default output with nothing behind it is silence.
-What is remembered is which outputs you tick (~/.local/state/hyprduo.json).
+Nothing about the ticks is stored either: they are read back from PipeWire.
 
 Like HyprWhale, it has no palette of its own: it inherits GTK's, which matugen
 regenerates on every wallpaper change. SIGUSR1 reloads the theme.
@@ -83,12 +84,9 @@ T = {
         "title": "Son partagé", "sink": "Son partagé",
         "pinned": "Verrouillée : Super + A ou Échap pour fermer",
         "on": "Partagé", "off": "Une sortie",
-        "share": "Partager le son",
-        "share_sub": "Le même son sur plusieurs sorties à la fois",
-        "share_need": "Coche au moins deux sorties",
-        "share_live": "Sur {names}",
-        "share_wait": "En attente de ses sorties",
-        "outputs": "Sorties", "picked": "{n} cochées", "picked1": "1 cochée",
+        "lead_off": "Coche une deuxième sortie pour y envoyer le même son",
+        "lead_on": "Le même son sur {names}",
+        "lead_wait": "Partagé, en attente de ses sorties",
         "none": "Aucune sortie", "none_sub": "PipeWire ne voit aucune carte son",
         "default": "Par défaut",
         "p_speaker": "Haut-parleurs", "p_jack": "Prise casque",
@@ -118,12 +116,9 @@ T = {
         "title": "Shared audio", "sink": "Shared audio",
         "pinned": "Locked: Super + A or Esc to close",
         "on": "Shared", "off": "One output",
-        "share": "Share the sound",
-        "share_sub": "The same sound on several outputs at once",
-        "share_need": "Tick at least two outputs",
-        "share_live": "On {names}",
-        "share_wait": "Waiting for its outputs",
-        "outputs": "Outputs", "picked": "{n} ticked", "picked1": "1 ticked",
+        "lead_off": "Tick a second output to send it the same sound",
+        "lead_on": "The same sound on {names}",
+        "lead_wait": "Shared, waiting for its outputs",
         "none": "No output", "none_sub": "PipeWire sees no sound card",
         "default": "Default",
         "p_speaker": "Speakers", "p_jack": "Headphone jack",
@@ -188,8 +183,6 @@ window, window.background { background: transparent; }
 .hd-root .hd-name { font-weight: 700; font-size: 12.5px; }
 .hd-root .hd-meta { font-size: 11px; opacity: 0.66; }
 
-.hd-hero { padding: 10px 14px; }
-.hd-root .hd-hero .hd-name { font-size: 13px; }
 
 .hd-row {
   padding: 7px 9px; border-radius: 8px;
@@ -572,7 +565,7 @@ class Duo(Adw.ApplicationWindow):
         self.add_css_class("hd-root")
 
         self.state = load_state()
-        self.selected = [n for n in self.state.get("selected", []) if isinstance(n, str)]
+        self.selected = []
         self.snap = None
         self.shape = None
         self.busy = False
@@ -723,12 +716,14 @@ class Duo(Adw.ApplicationWindow):
             self.refresh()
             return GLib.SOURCE_REMOVE
         self.snap = snap
-        if snap.share and snap.members and not self.busy:
-            # The module is the truth while sharing: it may have been changed
-            # by another instance, or survived one that crashed. Not while an
-            # action of ours is in flight, or a poll landing in between would
-            # put back the ticks the user just changed.
-            self.selected = list(snap.members)
+        if not self.busy:
+            # The ticks *are* where the sound goes, so they are read, never
+            # stored: the share's members, or else the one default output.
+            # Not while an action of ours is in flight, or a poll landing in
+            # between would put back the ticks the user just changed.
+            names = {o.name for o in snap.outputs}
+            self.selected = (list(snap.members) if snap.share
+                             else [snap.default] if snap.default in names else [])
         self._learn(snap)
         self._show()
         if self._again:
@@ -805,12 +800,7 @@ class Duo(Adw.ApplicationWindow):
         if self.snap is None:
             return
 
-        self.root.append(self._hero())
-        self.root.append(self._sep())
-        self.root.append(self._section(
-            self.s["outputs"],
-            (self.s["picked1"] if len(self.selected) == 1
-             else self.s["picked"].format(n=len(self.selected))) if self.selected else None))
+        self.root.append(self._lead())
         self.root.append(self._outputs())
         for hint in self._hints():
             self.root.append(hint)
@@ -846,33 +836,21 @@ class Duo(Adw.ApplicationWindow):
         box.append(chip)
         return box
 
-    def _hero(self):
-        box = Gtk.Box(spacing=12)
-        box.add_css_class("hd-hero")
-        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
-        texts.append(self._label(self.s["share"], "hd-name"))
-
+    def _lead(self):
+        """What the ticks do, in one line: there is no switch. One ticked
+        output is just where the sound goes; tick a second and it is shared."""
         sharing = bool(self.snap.share)
-        present = [o for o in self.snap.outputs if o.present]
-        ready = sum(1 for o in present if o.name in self.selected)
         if sharing:
             names = [self._name(o) for o in self.snap.outputs
                      if o.name in self.snap.members and o.present]
-            sub = (self.s["share_live"].format(names=", ".join(names)) if names
-                   else self.s["share_wait"])
-        elif ready < 2:
-            sub = self.s["share_need"]
+            text = (self.s["lead_on"].format(names=", ".join(names)) if names
+                    else self.s["lead_wait"])
         else:
-            sub = self.s["share_sub"]
-        texts.append(self._label(sub, "hd-meta", wrap=True))
-        box.append(texts)
-
-        sw = Gtk.Switch(valign=Gtk.Align.CENTER)
-        sw.set_active(sharing)
-        sw.set_sensitive(not self.busy and (sharing or ready >= 2))
-        sw.connect("notify::active", self._on_switch)
-        box.append(sw)
-        return box
+            text = self.s["lead_off"]
+        lbl = self._label(text, "hd-meta", wrap=True)
+        lbl.set_margin_start(14); lbl.set_margin_end(14)
+        lbl.set_margin_top(9); lbl.set_margin_bottom(6)
+        return lbl
 
     def _section(self, title, count):
         box = Gtk.Box(spacing=8)
@@ -929,7 +907,8 @@ class Duo(Adw.ApplicationWindow):
 
         top = Gtk.Box(spacing=10)
         check = Gtk.CheckButton(active=picked, valign=Gtk.Align.CENTER)
-        check.set_sensitive(not self.busy)
+        last = picked and len(self.selected) == 1
+        check.set_sensitive(not self.busy and not last)
         check.connect("toggled", lambda b, n=o.name: self._on_pick(n, b.get_active()))
         top.append(check)
         top.append(self._label(o.glyph, "hd-icon"))
@@ -1192,10 +1171,6 @@ class Duo(Adw.ApplicationWindow):
 
     # -- actions -----------------------------------------------------------
 
-    def _remember(self):
-        self.state["selected"] = self.selected
-        save_state(self.state)
-
     def _act(self, fn, *args):
         """Every action talks to pactl or bluetoothctl, both of which can
         hang for a second: off the main loop, then a fresh read."""
@@ -1219,31 +1194,22 @@ class Duo(Adw.ApplicationWindow):
         self.refresh()
         return GLib.SOURCE_REMOVE
 
-    def _on_switch(self, sw, _pspec):
-        if self.snap is None or sw.get_active() == bool(self.snap.share):
-            return
-        if sw.get_active():
-            self._act(self._start, list(self.selected))
-        else:
-            self._act(self._stop)
-
     def _on_pick(self, name, active):
-        if active and name not in self.selected:
-            self.selected.append(name)
-        elif not active and name in self.selected:
-            self.selected.remove(name)
-        self._remember()
-        if self.snap and self.snap.share:
-            if len(self.selected) >= 2:
-                self._act(self._start, list(self.selected))
-            elif self.selected:
-                # Down to one: that is not sharing any more. Hand the sound to
-                # the one left rather than to whatever played before.
-                self._act(self._collapse, self.selected[0])
-            else:
-                self._act(self._stop)
-        else:
+        """Two or more ticked: shared. One: plain output. None: refused, the
+        box is greyed out before it comes to that."""
+        wanted = [n for n in self.selected if n != name]
+        if active:
+            wanted.append(name)
+        if not wanted or wanted == self.selected:
             self._show(force=True)
+            return
+        self.selected = wanted               # the ticks answer at once
+        if len(wanted) >= 2:
+            self._act(self._start, list(wanted))
+        else:
+            # Down to one: not sharing any more. The sound stays on the one
+            # left rather than going back to whatever played before.
+            self._act(self._collapse, wanted[0])
 
     def _on_volume(self, name, scale):
         if self._quiet:
@@ -1300,7 +1266,9 @@ class Duo(Adw.ApplicationWindow):
             return
         share, module = current_share()
         if share is None:
+            out = pactl("get-default-sink")
             self.state["configured"] = configured_sink()
+            self.state["before"] = out.stdout.strip() if out and out.returncode == 0 else None
             save_state(self.state)
         name = SINKS[1] if share == SINKS[0] else SINKS[0]
         desc = self.s["sink"].replace("'", "’")
@@ -1331,9 +1299,14 @@ class Duo(Adw.ApplicationWindow):
         self._collapse(o.name)
 
     def _collapse(self, name):
-        """Stop sharing and play on this one output."""
+        """Play on this one output, sharing or not. Back to the output that
+        played before the share, it is the share being undone: WirePlumber's
+        own choice is restored, not a new one pinned over it."""
+        share, module = current_share()
+        if share and name == self.state.get("before"):
+            self._stop()
+            return
         pactl("set-default-sink", name)
-        _share, module = current_share()
         if module is not None:
             pactl("unload-module", str(module))
 

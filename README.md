@@ -175,8 +175,10 @@ container, *Open localhost:port* on a stopped one.
 
 ### HyprDuo
 
-Two headsets on one film, or a speaker next to the laptop: tick the outputs,
-flip *Share the sound*, and everything that plays comes out of all of them.
+Two headsets on one film, or a speaker next to the laptop: the ticks are where
+the sound goes. One ticked is just your output; tick a second and everything
+that plays comes out of both. Untick back down to one and the share ends on the
+one left. The last tick cannot be removed — the sound has to go somewhere.
 Each ticked output keeps its own volume slider, so each listener sets their
 own level.
 
@@ -205,7 +207,6 @@ Wi-Fi — starts to drop out.
 
 Sharing is deliberately **not** restored at login: the headsets are not
 connected yet then, and a default output with nothing behind it is silence.
-What it remembers, in `~/.local/state/hyprduo.json`, is which outputs you tick.
 
 ---
 
