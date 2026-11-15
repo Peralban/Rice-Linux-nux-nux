@@ -220,7 +220,7 @@ connected yet then, and a default output with nothing behind it is silence.
 | `Super + Shift + Q` | Kill the process |
 | `Super + Space` | Floating ↔ tiled |
 | `Super + Shift + F` | Fullscreen |
-| `Super + J` | Toggle split direction |
+| `Super + Shift + J` | Toggle split direction |
 | `Super + S` | Show / hide the scratchpad |
 | `Super + Alt + S` | Send the window to the scratchpad |
 | `Super + ← ↑ ↓ →` | Move focus |
@@ -242,6 +242,7 @@ music playing.
 | `Super + Shift + E` | Yazi |
 | `Super + B` | Browser |
 | `Super + D` | Discord |
+| `Super + J` | Jellyfin |
 | `Super + C` | Colour picker |
 | `Super + N` | Open / hide the notes |
 | `Super + Shift + N` | Open / close the notch |
