@@ -304,7 +304,8 @@ sudo pacman -S --needed \
   tumbler poppler-glib ffmpegthumbnailer libgsf libgepub libopenraw \
   docker docker-compose docker-buildx lazydocker \
   python-gobject gtk4 libadwaita gtk4-layer-shell \
-  ttf-jetbrains-mono-nerd noto-fonts-emoji fastfetch btop
+  ttf-jetbrains-mono-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji \
+  fastfetch btop
 ```
 
 ```bash
