@@ -325,7 +325,7 @@
 	"on-click": "$HOME/.config/hypr/scripts/volume.sh --toggle",
 	// Right-click: share the sound across outputs. The full mixer is one
 	// entry away inside it.
-	"on-click-right": "$HOME/.config/hypr/scripts/HyprDuo.py",
+	"on-click-right": "gapplication action dev.local.HyprDuo share || $HOME/.config/hypr/scripts/HyprDuo.py",
 	"on-scroll-up": "$HOME/.config/hypr/scripts/volume.sh --inc",
 	"on-scroll-down": "$HOME/.config/hypr/scripts/volume.sh --dec",
 	"tooltip-format": "{icon} {desc} | {volume}%",
@@ -347,7 +347,7 @@
       "default": ["", "", ""]
     },
   "on-click": "pamixer --toggle-mute",
-  "on-click-right": "$HOME/.config/hypr/scripts/HyprMix.py",
+  "on-click-right": "gapplication action dev.local.HyprDuo mixer || $HOME/.config/hypr/scripts/HyprDuo.py --tab outputs",
   "tooltip": true,
   "tooltip-format": "{icon} {desc} | {volume}%",
 },
@@ -357,7 +357,7 @@
 	"format-source": " {volume}%",
 	"format-source-muted": "",
 	"on-click": "$HOME/.config/hypr/scripts/volume.sh --toggle-mic",
-	"on-click-right": "$HOME/.config/hypr/scripts/HyprMix.py --page inputs",
+	"on-click-right": "gapplication action dev.local.HyprDuo mic || $HOME/.config/hypr/scripts/HyprDuo.py --tab inputs",
 	"on-scroll-up": "$HOME/.config/hypr/scripts/volume.sh --mic-inc",
 	"on-scroll-down": "$HOME/.config/hypr/scripts/volume.sh --mic-dec",
 	"tooltip-format": "{source_desc} | {source_volume}%",
@@ -373,7 +373,7 @@
 	"format": "{icon} {volume} %",
 	"format-muted": " Mute",
 	"on-click": "$HOME/.config/hypr/scripts/volume.sh --toggle",
-	"on-click-right": "$HOME/.config/hypr/scripts/HyprMix.py",
+	"on-click-right": "gapplication action dev.local.HyprDuo mixer || $HOME/.config/hypr/scripts/HyprDuo.py --tab outputs",
 	"on-scroll-up": "$HOME/.config/hypr/scripts/volume.sh --inc",
 	"on-scroll-down": "$HOME/.config/hypr/scripts/volume.sh --dec",
 	"format-icons": [

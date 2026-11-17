@@ -7,7 +7,7 @@
 	"return-type": "json",
 	"interval": 5,
 	"tooltip": true,
-	"on-click": "$HOME/.config/hypr/scripts/HyprWhale.py",
+	"on-click": "gapplication action dev.local.HyprWhale toggle || $HOME/.config/hypr/scripts/HyprWhale.py",
 },
 
 "backlight/slider": {

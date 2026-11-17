@@ -1,44 +1,39 @@
 #!/usr/bin/env python3
-"""HyprMix -- the sound mixer: outputs, microphones, applications (FR / EN).
+"""HyprMix -- the sound mixer pages: outputs, microphones, applications.
 
-Replaces pavucontrol, with the desktop's own look. Three pages:
+Not a window of its own any more: HyprDuo's popup shows these pages as tabs
+beside its Share tab, so the mixer and the share are one panel under the bar,
+and switching between them is a tab, not a second window over the first.
 
   * Outputs and Microphones: one card per device -- volume up to 150 %, mute,
     make it the default, pick its port, and a live level meter.
   * Applications: every stream playing or recording -- its own volume and
     mute, and which output (or microphone) it goes through.
 
-Everything goes through `pactl`, which pipewire-pulse answers; `pactl
-subscribe` says when something changes, so the window follows the system
-rather than polling it.
+Everything goes through `pactl`, which pipewire-pulse answers. The host
+forwards `pactl subscribe` events, so the pages follow the system rather
+than polling it, and only while one of them is on screen.
 
 Level meters: one `parec` per device, mono 16 kHz in 40 ms chunks, started
 only for the page on screen and stopped when it is left. Reading an output
 taps its monitor, which costs nothing; reading a microphone opens it, which
-is the point of a microphone meter. Those streams carry this app's id, so
+is the point of a microphone meter. Those streams carry this panel's id, so
 they never show up in its own Applications page.
 
-The window is rebuilt only when the shape of things changes (a device or a
+The pages are rebuilt only when the shape of things changes (a device or a
 stream comes or goes, a default or a port changes). Volumes, mutes and
 meters are updated in place, so a slider is never rebuilt under the finger
 dragging it.
 
-Like the other panels, it has no palette of its own: it inherits GTK's, which
-matugen regenerates on every wallpaper change. SIGUSR1 reloads the theme.
+Run as a script, it opens HyprDuo on one of these pages:
 
-  HyprMix.py                  open on Outputs
-  HyprMix.py --page inputs    open on Microphones (outputs / inputs / apps)
-  HyprMix.py --at-bar         open where HyprDuo's popup was: under the bar,
-                              top right. Its "full mixer" uses this, so the
-                              mixer takes the popup's place instead of
-                              appearing somewhere else on the screen.
+  HyprMix.py                  Outputs, locked open (Super+Shift+A)
+  HyprMix.py --page inputs    Microphones
 """
 
 import json
 import math
 import os
-import shutil
-import signal
 import subprocess
 import sys
 import threading
@@ -47,9 +42,9 @@ import time
 import gi
 
 gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
+# Tags this panel's own meter streams, so its Applications page skips them.
 APP_ID = "dev.local.HyprMix"
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
 SCRIPTS = os.path.dirname(os.path.realpath(__file__))
@@ -122,15 +117,10 @@ CODECS = {"sbc": "SBC", "sbc_xq": "SBC-XQ", "aac": "AAC", "aptx": "aptX",
           "cvsd": "CVSD", "opus_05": "Opus"}
 
 CSS = b"""
-/* Nearly opaque: a window this dense has to read over anything behind it. */
-window.hm-root, window.hm-root.background {
-  background: alpha(@window_bg_color, 0.97);
-}
 .hm-root, .hm-root button, .hm-root label, .hm-root dropdown {
   font-family: "JetBrainsMono Nerd Font Propo", "JetBrains Mono", monospace;
   font-size: 12px;
 }
-.hm-root headerbar { background: transparent; box-shadow: none; }
 
 /* bare classes lose to `.hm-root label`, hence the prefix on every label rule */
 .hm-root .hm-sec { font-size: 10px; letter-spacing: 1.6px; opacity: 0.65; }
@@ -144,7 +134,7 @@ window.hm-root, window.hm-root.background {
 }
 
 .hm-card {
-  padding: 10px 12px; border-radius: 10px;
+  padding: 8px 10px; border-radius: 9px;
   background: alpha(currentColor, 0.045);
   border: 1px solid alpha(currentColor, 0.08);
 }
@@ -186,7 +176,7 @@ window.hm-root, window.hm-root.background {
 .hm-root levelbar block.empty { background: transparent; }
 
 .hm-root dropdown > button { min-height: 24px; padding: 0 8px; font-size: 11px; }
-.hm-empty { margin: 30px 20px; }
+.hm-root .hm-empty { margin: 22px 16px; }
 """
 
 
@@ -233,6 +223,17 @@ def spawn(*argv):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
+
+
+def reach(app_id, action, *fallback):
+    """Ask a resident app over D-Bus (5 ms); start it if it is not there."""
+    try:
+        if subprocess.run(["gapplication", "action", app_id, action],
+                          capture_output=True, timeout=2).returncode == 0:
+            return
+    except (subprocess.SubprocessError, OSError):
+        pass
+    spawn(*fallback)
 
 
 def percent(volume):
@@ -403,23 +404,31 @@ class Meter:
             self.proc.terminate()
 
 
-# -- the window -------------------------------------------------------------
+# -- the panel --------------------------------------------------------------
 
-class Mixer(Adw.ApplicationWindow):
+_css_loaded = False
+
+
+class MixerPanel:
+    """The three mixer pages, for a host window to place where it likes.
+
+    `widget(page)` gives a page's scroller; `set_active(page)` says which one
+    is on screen (None: none, the window is hidden or on another tab), which
+    is what starts and stops reading and metering. `poke()` is how the host
+    passes on a `pactl subscribe` event; `on_resize` is called when a page's
+    content changed size, for a host that fits its window to it."""
+
     PAGES = ("outputs", "inputs", "apps")
+    MAX_HEIGHT = 560
 
-    def __init__(self, app, page="outputs", at_bar=False):
-        super().__init__(application=app, default_width=560, default_height=720)
+    def __init__(self, on_resize=None):
+        global _css_loaded
         self.s = T[lang()]
-        # The title is never shown (the header carries the page switcher), so
-        # it does another job: Hyprland's rules match it at map time to centre
-        # the window, or to put it under the bar without a centred first frame.
-        self.set_title("HyprMix (bar)" if at_bar else "HyprMix")
-        self.add_css_class("hm-root")
-
+        self.on_resize = on_resize
+        self.active = None
         self.snap = None
         self.shape = None
-        self.widgets = {}            # id -> (scale, value label, mute button, card)
+        self.widgets = {}            # id -> (scale, value label, mute button, row)
         self.meters = {}             # tap node -> Meter
         self.bars = {}               # tap node -> Gtk.LevelBar
         self.levels = {}             # tap node -> smoothed level
@@ -429,93 +438,50 @@ class Mixer(Adw.ApplicationWindow):
         self._probing = False
         self._again = False
         self._poke_id = None
-        self._events = None
 
-        provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        if not _css_loaded:
+            provider = Gtk.CssProvider()
+            provider.load_from_data(CSS)
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            _css_loaded = True
 
-        self.stack = Adw.ViewStack()
-        self.pages = {}
-        for key, icon in (("outputs", "audio-speakers-symbolic"),
-                          ("inputs", "audio-input-microphone-symbolic"),
-                          ("apps", "applications-multimedia-symbolic")):
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            box.set_margin_start(14); box.set_margin_end(14)
-            box.set_margin_top(6); box.set_margin_bottom(14)
-            scroller = Gtk.ScrolledWindow(child=box, vexpand=True)
+        self.pages, self.scrollers = {}, {}
+        for key in self.PAGES:
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            box.set_margin_start(8); box.set_margin_end(8)
+            box.set_margin_top(6); box.set_margin_bottom(8)
+            scroller = Gtk.ScrolledWindow(child=box)
+            scroller.add_css_class("hm-root")
             scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-            self.stack.add_titled_with_icon(scroller, key, self.s[key], icon)
+            # The page decides the popup's height, up to a point: past it, it scrolls.
+            scroller.set_propagate_natural_height(True)
+            scroller.set_max_content_height(self.MAX_HEIGHT)
             self.pages[key] = box
-        self.stack.set_visible_child_name(page if page in self.PAGES else "outputs")
-        self.stack.connect("notify::visible-child-name", lambda *_: self._sync_meters())
+            self.scrollers[key] = scroller
 
-        header = Adw.HeaderBar()
-        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
-        header.set_title_widget(switcher)
-        if os.path.exists(os.path.join(SCRIPTS, "HyprDuo.py")):
-            share = Gtk.Button(child=Gtk.Label(label=G_SHARE))
-            share.add_css_class("hm-round")
-            share.set_tooltip_text(self.s["share"])
-            share.connect("clicked", lambda _b: spawn(os.path.join(SCRIPTS, "HyprDuo.py"), "--pin"))
-            header.pack_end(share)
+    def widget(self, page):
+        return self.scrollers[page]
 
-        view = Adw.ToolbarView()
-        view.add_top_bar(header)
-        view.set_content(self.stack)
-        self.set_content(view)
+    def set_active(self, page):
+        self.active = page if page in self.PAGES else None
+        if self.active:
+            self.refresh()
+        self._sync_meters()
 
-        keys = Gtk.EventControllerKey()
-        keys.connect("key-pressed", self._on_key)
-        self.add_controller(keys)
-        self.connect("close-request", self._on_close)
+    def stop(self):
+        self.set_active(None)
 
-        self.refresh()
-        self._watch()
-
-    def show_page(self, page):
-        if page in self.PAGES:
-            self.stack.set_visible_child_name(page)
-
-    def _on_key(self, _c, keyval, _kc, _st):
-        if keyval == Gdk.KEY_Escape:
-            self.close()
-            return Gdk.EVENT_STOP
-        return Gdk.EVENT_PROPAGATE
-
-    def _on_close(self, *_):
-        for meter in self.meters.values():
-            meter.stop()
-        self.meters.clear()
-        if self._events and self._events.poll() is None:
-            self._events.terminate()
-        return False
+    def poke(self):
+        if self.active and self._poke_id is None:
+            self._poke_id = GLib.timeout_add(150, self._poked)
 
     # -- reading -----------------------------------------------------------
 
-    def _watch(self):
-        try:
-            self._events = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE,
-                                            stderr=subprocess.DEVNULL, text=True)
-        except OSError:
-            return
-
-        def read():
-            for line in self._events.stdout:
-                if " client " in line or " module " in line:
-                    continue
-                GLib.idle_add(self._poke)
-        threading.Thread(target=read, daemon=True).start()
-
-    def _poke(self):
-        if self._poke_id is None:
-            self._poke_id = GLib.timeout_add(150, self._poked)
-        return GLib.SOURCE_REMOVE
-
     def _poked(self):
         self._poke_id = None
-        self.refresh()
+        if self.active:
+            self.refresh()
         return GLib.SOURCE_REMOVE
 
     def refresh(self):
@@ -619,6 +585,8 @@ class Mixer(Adw.ApplicationWindow):
             apps.append(self._empty(self.s["no_rec"]))
 
         self._sync_meters()
+        if self.on_resize:
+            self.on_resize()
 
     def _section(self, title):
         lbl = self._label(title.upper(), "hm-sec")
@@ -777,7 +745,7 @@ class Mixer(Adw.ApplicationWindow):
             indexes = [d.index for d in devices]
             drop = Gtk.DropDown.new_from_strings(labels)
             drop.set_valign(Gtk.Align.CENTER)
-            drop.set_size_request(170, -1)
+            drop.set_size_request(128, -1)
             if x.target in indexes:
                 drop.set_selected(indexes.index(x.target))
             drop.connect("notify::selected",
@@ -794,9 +762,9 @@ class Mixer(Adw.ApplicationWindow):
     def _sync_meters(self):
         """Meters only for the page on screen: a microphone meter opens the
         microphone, and nothing should listen while nobody is looking."""
+        page = self.active
         if self.snap is None:
-            return
-        page = self.stack.get_visible_child_name()
+            page = None
         wanted = set()
         if page == "outputs":
             wanted = {d.tap for d in self.snap.sinks if d.tap}
@@ -873,51 +841,18 @@ class Mixer(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
 
-def to_bar():
-    """Top right, under the bar, level with the tiled windows -- where
-    HyprDuo's popup sits. For a mixer already open somewhere else."""
-    try:
-        mon = next(m for m in json.loads(subprocess.run(
-            ["hyprctl", "monitors", "-j"], capture_output=True, text=True).stdout) if m["focused"])
-        gap = json.loads(subprocess.run(["hyprctl", "getoption", "general:gaps_out", "-j"],
-                                        capture_output=True, text=True).stdout)
-        border = json.loads(subprocess.run(["hyprctl", "getoption", "general:border_size", "-j"],
-                                           capture_output=True, text=True).stdout)
-        width = round(mon["width"] / (mon.get("scale") or 1))
-        x = mon["x"] + width - 560 - 12
-        y = mon["y"] + mon["reserved"][1] + int(str(gap["css"]).split()[0]) + border["int"]
-    except (ValueError, KeyError, StopIteration, OSError, IndexError):
-        return
-    subprocess.run(["hyprctl", "eval", "hl.dispatch(hl.dsp.window.move{ exact = true, "
-                    f'x = {x}, y = {y}, window = "class:{APP_ID}" }})'], capture_output=True)
-
-
-class App(Adw.Application):
-    def __init__(self):
-        super().__init__(application_id=APP_ID,
-                         flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
-
-    def do_command_line(self, cmdline):
-        args = cmdline.get_arguments()[1:]
-        page = None
-        if "--page" in args and args.index("--page") + 1 < len(args):
-            page = args[args.index("--page") + 1]
-        at_bar = "--at-bar" in args
-        win = self.props.active_window
-        if win is None:
-            win = Mixer(self, page or "outputs", at_bar)
-            signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
-        else:
-            if page:
-                win.show_page(page)
-            if at_bar:
-                to_bar()
-        win.present()
-        return 0
+def main():
+    """Open HyprDuo's popup on a mixer page: a 5 ms message to the resident
+    popup, or HyprDuo itself when it is not running."""
+    args = sys.argv[1:]
+    page = args[args.index("--page") + 1] if "--page" in args and \
+        args.index("--page") + 1 < len(args) else "outputs"
+    duo = os.path.join(SCRIPTS, "HyprDuo.py")
+    if page == "inputs":
+        reach("dev.local.HyprDuo", "mic", duo, "--tab", "inputs")
+    else:
+        reach("dev.local.HyprDuo", "mixer-pinned", duo, "--pin", "--tab", page)
 
 
 if __name__ == "__main__":
-    if shutil.which("pactl") is None:
-        sys.exit("pactl is missing: install libpulse")
-    # the real argv: run(None) hands GApplication nothing, and --page never arrives
-    App().run(sys.argv)
+    main()

@@ -3,6 +3,11 @@
 
 Has no palette of its own: it inherits GTK's, which matugen regenerates on
 every wallpaper change. SIGUSR1 reloads the theme.
+
+Resident: started hidden with Hyprland (`--daemon`), shown and hidden by
+`gapplication action dev.local.HyprWhale toggle`, a 5 ms message, where
+relaunching the script paid ~200 ms of Python and GTK start-up first. Hidden,
+it polls nothing.
 """
 
 import json
@@ -12,13 +17,14 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import threading
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
 TERMINAL = "kitty"
@@ -210,8 +216,9 @@ class Container:
 
 
 class Whale(Adw.ApplicationWindow):
-    def __init__(self, app):
+    def __init__(self, app, hidden=False):
         super().__init__(application=app, default_width=380)
+        self.hidden = hidden
         self.s = T[lang()]
         self.set_title(self.s["title"])
         self.add_css_class("hw-root")
@@ -248,9 +255,37 @@ class Whale(Adw.ApplicationWindow):
 
         # Paint the chrome straight away: waiting for `docker info` before the
         # first frame is what made the window look slow to open.
+        # Closing hides: the next opening is then a message, not a start-up.
+        self.connect("close-request", self._hide)
+
         self._render()
         self.refresh()
         GLib.timeout_add(REFRESH_MS, self._tick)
+        if not hidden:
+            GLib.timeout_add(700, self._remember_anchor)
+
+    def leaving(self):
+        """Lost the focus a moment ago: the click that took it was most
+        likely on the whale, asking for the popup to go."""
+        return self._closing is not None
+
+    def _hide(self, *_):
+        self.set_visible(False)
+        self.hidden = True
+        self._had_focus = False
+        if self._closing:
+            GLib.source_remove(self._closing)
+            self._closing = None
+        return True                       # handled: the window is kept
+
+    def reveal(self):
+        """Shown again: what it showed last time first, the fresh state right
+        after. Hyprland sees a new window, so its rule places it again."""
+        self.hidden = False
+        self.anchor = None
+        self.shape = None
+        self.refresh()
+        self.present()
         GLib.timeout_add(700, self._remember_anchor)
 
     # -- header ------------------------------------------------------------
@@ -284,7 +319,8 @@ class Whale(Adw.ApplicationWindow):
     # -- reading the state -------------------------------------------------
 
     def _tick(self):
-        self.refresh()
+        if not self.hidden:               # no docker calls for a hidden popup
+            self.refresh()
         return GLib.SOURCE_CONTINUE
 
     def refresh(self):
@@ -747,14 +783,47 @@ class Whale(Adw.ApplicationWindow):
 
 
 class App(Adw.Application):
-    def __init__(self):
-        super().__init__(application_id="dev.local.HyprWhale")
+    """`--daemon`: start hidden and stay. Otherwise, or through the `toggle`
+    action, show or hide. A second launch reaches this process instead of
+    starting another."""
 
-    def do_activate(self):
-        win = self.props.active_window or Whale(self)
-        win.present()
-        signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
+    def __init__(self):
+        super().__init__(application_id="dev.local.HyprWhale",
+                         flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.win = None
+        toggle = Gio.SimpleAction.new("toggle", None)
+        toggle.connect("activate", lambda *_: self.toggle())
+        self.add_action(toggle)
+
+    def _window(self, hidden):
+        if self.win is None:
+            self.hold()                   # hidden windows or not, stay resident
+            self.win = Whale(self, hidden=hidden)
+            signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(self.win.reload_theme))
+            return True
+        return False
+
+    def toggle(self):
+        if self._window(hidden=False):
+            self.win.present()
+            return
+        win = self.win
+        if not win.get_visible():
+            win.reveal()
+        elif win.leaving() or win.is_active():
+            # Clicking the whale again: that click took the focus first, so
+            # the popup is on its way out. Make it go now.
+            win.close()
+        else:
+            win.present()
+
+    def do_command_line(self, cmdline):
+        if "--daemon" in cmdline.get_arguments()[1:]:
+            self._window(hidden=True)
+        else:
+            self.toggle()
+        return 0
 
 
 if __name__ == "__main__":
-    App().run(None)
+    App().run(sys.argv)

@@ -27,6 +27,21 @@ Sharing is deliberately not restored at login: at that moment the headsets are
 not connected yet, and a default output with nothing behind it is silence.
 Nothing about the ticks is stored either: they are read back from PipeWire.
 
+The mixer lives here too: HyprMix's pages -- outputs, microphones,
+applications -- are tabs of this popup, beside Share. One panel under the
+bar, the same size, where the mixer used to be a second, larger window that
+opened over this one.
+
+Resident: started hidden with Hyprland (`--daemon`), then shown and hidden by
+`gapplication action dev.local.HyprDuo <action>`, a 5 ms message where
+relaunching the script paid ~200 ms of Python and GTK start-up first:
+
+  share / share-pinned     the Share tab, as a menu / locked (Super+A)
+  mixer / mixer-pinned     the Outputs tab, as a menu / locked (Super+Shift+A)
+  mic                      the Microphones tab, as a menu
+
+Hidden, it refreshes nothing and meters nothing.
+
 Like HyprWhale, it has no palette of its own: it inherits GTK's, which matugen
 regenerates on every wallpaper change. SIGUSR1 reloads the theme.
 """
@@ -47,6 +62,9 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from HyprMix import MixerPanel  # noqa: E402
 
 APP_ID = "dev.local.HyprDuo"
 LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
@@ -78,15 +96,18 @@ G_SCREEN = "\U000f0379"
 G_BT = "\U000f00af"
 G_LOGO = "\U000f0d38"      # several speakers
 G_LOCK = "\U000f033e"
+G_VOL = "\U000f057e"
+G_MIC = "\U000f036c"
+G_APPS = "\U000f075a"
+
+TABS = ("share", "outputs", "inputs", "apps")
 
 T = {
     "fr": {
-        "title": "Son partagé", "sink": "Son partagé",
+        "title": "Son", "sink": "Son partagé",
+        "t_share": "Partage", "t_outputs": "Sorties", "t_inputs": "Micros", "t_apps": "Applis",
         "pinned": "Verrouillée : Super + A ou Échap pour fermer",
         "on": "Partagé", "off": "Une sortie",
-        "lead_off": "Coche une deuxième sortie pour y envoyer le même son",
-        "lead_on": "Le même son sur {names}",
-        "lead_wait": "Partagé, en attente de ses sorties",
         "none": "Aucune sortie", "none_sub": "PipeWire ne voit aucune carte son",
         "default": "Par défaut",
         "p_speaker": "Haut-parleurs", "p_jack": "Prise casque",
@@ -113,12 +134,10 @@ T = {
         "mixer": "Mixeur complet", "bt_settings": "Réglages Bluetooth",
     },
     "en": {
-        "title": "Shared audio", "sink": "Shared audio",
+        "title": "Sound", "sink": "Shared audio",
+        "t_share": "Share", "t_outputs": "Outputs", "t_inputs": "Mics", "t_apps": "Apps",
         "pinned": "Locked: Super + A or Esc to close",
         "on": "Shared", "off": "One output",
-        "lead_off": "Tick a second output to send it the same sound",
-        "lead_on": "The same sound on {names}",
-        "lead_wait": "Shared, waiting for its outputs",
         "none": "No output", "none_sub": "PipeWire sees no sound card",
         "default": "Default",
         "p_speaker": "Speakers", "p_jack": "Headphone jack",
@@ -206,6 +225,17 @@ window, window.background { background: transparent; }
 .hd-root .hd-hint label { font-size: 11px; }
 /* bare classes lose to `.hd-root label`, hence the prefix on every label rule */
 .hd-root .hd-soft { margin: 2px 14px 4px 14px; }
+
+/* the tabs: one popup, four pages */
+.hd-tabs { margin: 6px 8px 2px 8px; }
+.hd-root button.hd-tab {
+  min-height: 26px; padding: 0 6px; border-radius: 8px;
+  background: none; border: none; box-shadow: none; font-size: 11px;
+}
+.hd-root button.hd-tab:hover { background: alpha(@accent_color, 0.10); }
+/* the checked tab already says where you are: no focus ring on top */
+.hd-root button.hd-tab, .hd-root button.hd-tab:focus-visible { outline: none; }
+.hd-root button.hd-tab:checked { background: alpha(@accent_color, 0.20); color: @accent_color; }
 
 .hd-root button.hd-item {
   min-height: 28px; padding: 0 10px;
@@ -552,8 +582,10 @@ def snapshot(selected, names=None):
 # -- the window -------------------------------------------------------------
 
 class Duo(Adw.ApplicationWindow):
-    def __init__(self, app, pinned=False):
+    def __init__(self, app, pinned=False, hidden=False, tab="share"):
         super().__init__(application=app, default_width=WIDTH)
+        self.hidden = hidden
+        self.tab = tab if tab in TABS else "share"
         # Opened from the keyboard, the pointer is somewhere else on the
         # screen. With focus following the mouse, the trip to the popup crosses
         # other windows, and a popup that closes on focus loss is gone before
@@ -596,6 +628,21 @@ class Duo(Adw.ApplicationWindow):
         self.toasts = Adw.ToastOverlay(child=self.root)
         self.set_content(self.toasts)
 
+        # header (rebuilt with the state) / tabs / the page on screen
+        self.head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.root.append(self.head)
+        self.root.append(self._tabs())
+        self.stack = Gtk.Stack()
+        # Not homogeneous: the popup takes the height of the page shown.
+        self.stack.set_vhomogeneous(False)
+        self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
+        self.share = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.stack.add_named(self.share, "share")
+        self.mixer = MixerPanel(on_resize=lambda: GLib.timeout_add(30, self._fit))
+        for page in MixerPanel.PAGES:
+            self.stack.add_named(self.mixer.widget(page), page)
+        self.root.append(self.stack)
+
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._on_key)
         self.add_controller(keys)
@@ -610,6 +657,41 @@ class Duo(Adw.ApplicationWindow):
         self.refresh()
         self._watch()
         GLib.timeout_add(POLL_MS, self._tick)
+        self.set_tab(self.tab)
+
+    # -- tabs ---------------------------------------------------------------
+
+    def _tabs(self):
+        bar = Gtk.Box(spacing=2, homogeneous=True)
+        bar.add_css_class("hd-tabs")
+        self.tab_buttons = {}
+        first = None
+        for name, glyph in (("share", G_LOGO), ("outputs", G_VOL),
+                            ("inputs", G_MIC), ("apps", G_APPS)):
+            b = Gtk.ToggleButton(label=f"{glyph}  {self.s['t_' + name]}")
+            b.add_css_class("hd-tab")
+            if first is None:
+                first = b
+            else:
+                b.set_group(first)
+            b.connect("toggled", lambda w, n=name: w.get_active() and n != self.tab
+                      and self.set_tab(n))
+            self.tab_buttons[name] = b
+            bar.append(b)
+        return bar
+
+    def set_tab(self, name):
+        """One window, four pages: the mixer's pages only read and meter
+        while they are the one shown, and the window fits whichever it is."""
+        self.tab = name if name in TABS else "share"
+        button = self.tab_buttons[self.tab]
+        if not button.get_active():
+            button.set_active(True)
+        self.stack.set_visible_child_name(self.tab)
+        self.mixer.set_active(None if self.hidden or self.tab == "share" else self.tab)
+        if self.tab == "share" and not self.hidden:
+            self.refresh()
+        GLib.timeout_add(30, self._fit)
 
     # -- focus, like a tray menu -------------------------------------------
 
@@ -656,10 +738,30 @@ class Duo(Adw.ApplicationWindow):
         return Gdk.EVENT_PROPAGATE
 
     def _on_close(self, *_):
-        proc = getattr(self, "_events", None)
-        if proc and proc.poll() is None:
-            proc.terminate()
-        return False
+        """Hide, never destroy: the next opening is a message, not a start-up.
+        `pactl subscribe` stays, idle; what it reports waits for the next
+        showing, and the meters stop -- no microphone open behind a closed
+        popup."""
+        self.set_visible(False)
+        self.hidden = True
+        self.pinned = False
+        self._had_focus = False
+        self.menus_open = 0
+        if self._closing:
+            GLib.source_remove(self._closing)
+            self._closing = None
+        self.mixer.stop()
+        return True
+
+    def reveal(self, pinned, tab):
+        """Shown again, as a menu or locked, on a tab. Hyprland sees a new
+        window: its rule places it, and the map handler fits and pins it."""
+        self.hidden = False
+        self.pinned = pinned
+        self.height = None
+        self.shape = None
+        self.set_tab(tab)
+        self.present()
 
     # -- reading the state -------------------------------------------------
 
@@ -688,11 +790,17 @@ class Duo(Adw.ApplicationWindow):
 
     def _poked(self):
         self._poke_id = None
-        self.refresh()
+        if self.hidden:
+            return GLib.SOURCE_REMOVE
+        if self.tab == "share":
+            self.refresh()
+        else:
+            self.mixer.poke()
         return GLib.SOURCE_REMOVE
 
     def _tick(self):
-        self.refresh()
+        if not self.hidden and self.tab == "share":
+            self.refresh()
         return GLib.SOURCE_CONTINUE
 
     def refresh(self):
@@ -792,27 +900,30 @@ class Duo(Adw.ApplicationWindow):
     def _render(self):
         self.dirty = False
         self.sliders = {}
-        while (child := self.root.get_first_child()) is not None:
-            self.root.remove(child)
+        for box in (self.head, self.share):
+            while (child := box.get_first_child()) is not None:
+                box.remove(child)
 
-        self.root.append(self._header())
-        self.root.append(self._sep())
+        self.head.append(self._header())
+        self.head.append(self._sep())
         if self.snap is None:
             return
 
-        self.root.append(self._lead())
-        self.root.append(self._outputs())
+        page = self.share
+        page.append(self._outputs())
         for hint in self._hints():
-            self.root.append(hint)
+            page.append(hint)
 
         devices = self._devices()
         if devices is not None:
-            self.root.append(self._sep())
-            self.root.append(self._section(self.s["devices"], None))
-            self.root.append(devices)
+            page.append(self._sep())
+            page.append(self._section(self.s["devices"], None))
+            page.append(devices)
 
-        self.root.append(self._sep())
-        self.root.append(self._footer())
+        footer = self._footer()
+        if footer.get_first_child() is not None:
+            page.append(self._sep())
+            page.append(footer)
         GLib.timeout_add(30, self._fit)
 
     def _header(self):
@@ -836,22 +947,6 @@ class Duo(Adw.ApplicationWindow):
         box.append(chip)
         return box
 
-    def _lead(self):
-        """What the ticks do, in one line: there is no switch. One ticked
-        output is just where the sound goes; tick a second and it is shared."""
-        sharing = bool(self.snap.share)
-        if sharing:
-            names = [self._name(o) for o in self.snap.outputs
-                     if o.name in self.snap.members and o.present]
-            text = (self.s["lead_on"].format(names=", ".join(names)) if names
-                    else self.s["lead_wait"])
-        else:
-            text = self.s["lead_off"]
-        lbl = self._label(text, "hd-meta", wrap=True)
-        lbl.set_margin_start(14); lbl.set_margin_end(14)
-        lbl.set_margin_top(9); lbl.set_margin_bottom(6)
-        return lbl
-
     def _section(self, title, count):
         box = Gtk.Box(spacing=8)
         box.set_margin_start(13); box.set_margin_end(11)
@@ -867,6 +962,7 @@ class Duo(Adw.ApplicationWindow):
             return self._notice(self.s["none"], self.s["none_sub"])
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         inner.set_margin_start(6); inner.set_margin_end(6); inner.set_margin_bottom(4)
+        inner.set_margin_top(6)
         for o in self.snap.outputs:
             inner.append(self._row(o))
         sc = Gtk.ScrolledWindow(child=inner)
@@ -1111,12 +1207,9 @@ class Duo(Adw.ApplicationWindow):
         box.set_margin_start(5); box.set_margin_end(5)
         box.set_margin_top(4); box.set_margin_bottom(5)
         here = os.path.dirname(os.path.realpath(__file__))
-        mixer = os.path.join(here, "HyprMix.py")
         blue = os.path.join(here, "HyprBlue.py")
-        # The mixer opens where this popup is, and the popup goes: one takes
-        # the other's place rather than a second window appearing elsewhere.
-        entries = [(self.s["mixer"], (mixer, "--at-bar") if os.path.exists(mixer)
-                    else ("pavucontrol", "-t", "3"))]
+        # The mixer is not in this list any more: it is the next tabs.
+        entries = []
         if self.snap.bt != "absent":
             if os.path.exists(blue):
                 entries.append((self.s["bt_settings"], (blue,)))
@@ -1355,23 +1448,52 @@ class Duo(Adw.ApplicationWindow):
 
 
 class App(Adw.Application):
-    """`HyprDuo.py` from the bar: a menu, gone when the focus leaves.
-    `HyprDuo.py --pin` from Super+A: stays until the same key, or Esc.
+    """Resident: `--daemon` builds the popup hidden, then actions (or a second
+    launch, which GApplication hands to this process) show and hide it.
 
-    A second launch does not start a second process: GApplication hands its
-    arguments to the one running, and this is where they land."""
+    Launched as a script: `--pin` locks it, `--tab outputs|inputs|apps`
+    opens on a mixer page."""
+
+    ACTIONS = {"share": ("share", False), "share-pinned": ("share", True),
+               "mixer": ("outputs", False), "mixer-pinned": ("outputs", True),
+               "mic": ("inputs", False)}
 
     def __init__(self):
         super().__init__(application_id=APP_ID,
                          flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.win = None
+        for name, (tab, pin) in self.ACTIONS.items():
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda *_a, t=tab, p=pin: self.toggle(t, p))
+            self.add_action(action)
+        # the old names, for anything still calling them
+        for old, new in (("toggle", "share"), ("toggle-pinned", "share-pinned")):
+            action = Gio.SimpleAction.new(old, None)
+            action.connect("activate", lambda *_a, n=new: self.toggle(*self.ACTIONS[n]))
+            self.add_action(action)
 
-    def do_command_line(self, cmdline):
-        pin = "--pin" in cmdline.get_arguments()[1:]
-        win = self.props.active_window
-        if win is None:
-            win = Duo(self, pinned=pin)
+    def _window(self, hidden, pin=False, tab="share"):
+        if self.win is None:
+            self.hold()                   # hidden or not, stay resident
+            self.win = Duo(self, pinned=pin, hidden=hidden, tab=tab)
+            signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(self.win.reload_theme))
+            return True
+        return False
+
+    def toggle(self, tab, pin):
+        if self._window(hidden=False, pin=pin, tab=tab):
+            self.win.present()
+            return
+        win = self.win
+        if not win.get_visible():
+            win.reveal(pin, tab)
+            return
+        if win.tab != tab:
+            # Open on another page: that page, not a close.
+            win.set_tab(tab)
+            if pin and not win.pinned:
+                win.set_pinned(True)
             win.present()
-            signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
         elif win.pinned:
             win.close()                   # the shortcut again: unlock and go
         elif pin:
@@ -1383,6 +1505,15 @@ class App(Adw.Application):
             win.close()
         else:
             win.present()
+
+    def do_command_line(self, cmdline):
+        args = cmdline.get_arguments()[1:]
+        tab = args[args.index("--tab") + 1] if "--tab" in args and \
+            args.index("--tab") + 1 < len(args) else "share"
+        if "--daemon" in args:
+            self._window(hidden=True)
+        else:
+            self.toggle(tab, "--pin" in args)
         return 0
 
 

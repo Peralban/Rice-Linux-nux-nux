@@ -2,7 +2,7 @@
 
 A Hyprland desktop on Arch Linux, grown out of the
 [JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) dotfiles and rebuilt
-around nine hand-written GTK4 applications.
+around eight hand-written GTK4 applications.
 
 One rule governs the whole repository: **no colour is ever written by hand.**
 The wallpaper decides the palette, and fourteen surfaces follow it — the bar,
@@ -48,7 +48,7 @@ it, regenerates one file per target, and tells each one to look again.
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | hyprlock | reads `hypr/colors.conf` | sourced at launch |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo\|Mix\|Screens\|Blue)[.]py"` |
+| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo\|Screens\|Blue)[.]py"` |
 | GTK 3 | `gtk-3.0/colors.css` | `gtk3-reload.sh` — restart, see Notes |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | swaync | imports `waybar/colors.css` | `swaync-client -rs` |
@@ -93,8 +93,7 @@ switcher, themed from the system palette.
 | **HyprSettings** | `Super + Shift + K` | Spacing, decoration, blur, bar, notch, mouse and keyboard |
 | **HyprKeys** | `Super + Shift + /` | Keybinding editor — captures the combination as you press it |
 | **HyprWhale** | click the whale | Docker: containers, start/stop, terminal, logs |
-| **HyprDuo** | `Super + A`, or right-click the volume | The same sound on several headsets or speakers at once |
-| **HyprMix** | `Super + Shift + A`, or right-click the microphone | Sound mixer: outputs, microphones with a live meter, per-application volume and routing |
+| **HyprDuo** | `Super + A` / `Super + Shift + A`, or right-click the volume or the microphone | Sound, in one popup: share across outputs, and the mixer — outputs, microphones with a live meter, applications |
 | **HyprScreens** | `Super + Shift + D` | Monitor layout and modes, with a timed confirmation |
 | **HyprBlue** | `Super + Shift + B` | Bluetooth: power, devices, battery, search and pairing |
 | **HyprNotch** | `Super + Shift + N`, or hover | Media, calendar, system, file shelf, AirDrop, pinned note |
@@ -211,19 +210,17 @@ Wi-Fi — starts to drop out.
 Sharing is deliberately **not** restored at login: the headsets are not
 connected yet then, and a default output with nothing behind it is silence.
 
-### HyprMix
+### The mixer (HyprMix, inside HyprDuo)
 
-Replaces pavucontrol. Three pages — Outputs, Microphones, Applications — of
-cards: volume up to 150 %, mute, *make default*, the port, and a level meter.
-Applications get their own volume and a menu to move them to another output or
-microphone.
+Replaces pavucontrol, as tabs of HyprDuo's popup — **Share · Outputs · Mics ·
+Apps** — not as a window of its own. It was one, larger and elsewhere on the
+screen, and its *share* button opened HyprDuo over it: two windows for what is
+one subject. `HyprMix.py` now holds the pages (`MixerPanel`), HyprDuo shows
+them, and the popup takes the height of the tab on screen.
 
-HyprDuo's *full mixer* opens it with `--at-bar`: in the popup's place, under the
-bar, while the popup goes — one panel turning into the other rather than a
-second window appearing elsewhere. Its window title is never shown (the header
-holds the page switcher), so it carries that wish to Hyprland's rules instead:
-`HyprMix` is centred, `HyprMix (bar)` is put under the bar, with no centred
-first frame.
+Outputs and microphones are cards: volume up to 150 %, mute, *make default*,
+the port, and a level meter. Applications get their own volume and a menu to
+move them to another output or microphone.
 
 The meters are one `parec` per device, 16 kHz mono, started only for the page
 on screen: an output meter taps its monitor and costs nothing, a microphone
@@ -231,10 +228,25 @@ meter opens the microphone, so nothing listens while nobody is looking. The dB
 scale goes amber past −12 dBFS and red past −3: a built-in microphone that
 lives in the amber is set too hot.
 
-Updates come from `pactl subscribe`. The window is rebuilt only when the shape
-of things changes — a device or a stream comes or goes, a default or a port
-moves; volumes and mutes are updated in place, so a slider is never rebuilt
-under the finger dragging it.
+Updates come from HyprDuo's `pactl subscribe`, passed on only to the tab on
+screen. A page is rebuilt only when the shape of things changes — a device or
+a stream comes or goes, a default or a port moves; volumes and mutes are
+updated in place, so a slider is never rebuilt under the finger dragging it.
+
+### Resident popups
+
+HyprDuo and HyprWhale start hidden with Hyprland (`--daemon`) and stay. The bar
+and the shortcuts reach them with `gapplication action dev.local.HyprDuo
+share|share-pinned|mixer|mixer-pinned|mic` (or `dev.local.HyprWhale toggle`):
+a 5 ms D-Bus message, where relaunching the script spent ~200 ms loading Python,
+GTK and the typelibs before the running instance even heard of it. Each command
+falls back to launching the script, so a popup that is not running still opens.
+Closing hides rather than destroys; hidden, a popup refreshes nothing and
+meters nothing.
+
+One process per popup rather than one daemon for all: GTK 4 gives every window
+of a process the same app id, which is what Hyprland's rules match on, and one
+blocked call or uncaught exception would take every panel down with it.
 
 ### HyprBlue
 
@@ -306,7 +318,8 @@ music playing.
 | `Super + Shift + E` | Yazi |
 | `Super + B` | Browser |
 | `Super + D` | Discord |
-| `Super + Shift + A` | Sound mixer |
+| `Super + A` | Sound: share (locked) |
+| `Super + Shift + A` | Sound: mixer (locked) |
 | `Super + Shift + D` | Displays |
 | `Super + Shift + B` | Bluetooth |
 | `Super + J` | Jellyfin |

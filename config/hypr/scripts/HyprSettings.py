@@ -456,9 +456,12 @@ def save_lang(lang):
 # therefore not enough: without a restart, changing the language here only
 # changed this window, and the notch stayed in the old one until the next
 # session -- which reads as though the setting did not work.
+# (script, arguments to bring it back with): the resident popups come back
+# hidden, as Hyprland starts them -- not suddenly open on screen.
 LANG_CONSUMERS = (
-    os.path.expanduser("~/.config/hypr/scripts/HyprNotch.py"),
-    os.path.expanduser("~/.config/hypr/scripts/HyprWhale.py"),
+    (os.path.expanduser("~/.config/hypr/scripts/HyprNotch.py"), ()),
+    (os.path.expanduser("~/.config/hypr/scripts/HyprWhale.py"), ("--daemon",)),
+    (os.path.expanduser("~/.config/hypr/scripts/HyprDuo.py"), ("--daemon",)),
 )
 
 
@@ -486,7 +489,7 @@ def _pids_running(script):
 
 def restart_lang_consumers():
     """Restarts the ones that are running, lets the others sleep."""
-    for script in LANG_CONSUMERS:
+    for script, args in LANG_CONSUMERS:
         pids = _pids_running(script)
         if not pids:
             continue
@@ -497,12 +500,12 @@ def restart_lang_consumers():
                 pass
         # Let the layer-shell surface withdraw before asking for another: two
         # notches overlapping for a second is visible.
-        GLib.timeout_add(400, _respawn, script)
+        GLib.timeout_add(400, _respawn, script, args)
 
 
-def _respawn(script):
+def _respawn(script, args=()):
     try:
-        subprocess.Popen([script], start_new_session=True)
+        subprocess.Popen([script, *args], start_new_session=True)
     except OSError:
         pass
     return False
