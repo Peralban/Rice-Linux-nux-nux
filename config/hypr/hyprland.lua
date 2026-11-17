@@ -319,10 +319,17 @@ hl.window_rule({ name = "open-dialog", match = { initial_title = "(Open Files)" 
 -- the in-house panels (notes tile, so no rule)
 hl.window_rule({ name = "hyprsettings", match = { class = "dev.local.HyprSettings" }, float = true, size = "580 720", center = true })
 hl.window_rule({ name = "hyprkeys", match = { class = "dev.local.HyprKeys" }, float = true, size = "680 780", center = true })
+hl.window_rule({ name = "hyprblue", match = { class = "dev.local.HyprBlue" }, float = true, size = "520 640", center = true,
+    opacity = "1.0 override 1.0 override" })
 hl.window_rule({ name = "hyprscreens", match = { class = "dev.local.HyprScreens" }, float = true, size = "720 640", center = true,
     opacity = "1.0 override 1.0 override" })
-hl.window_rule({ name = "hyprmix", match = { class = "dev.local.HyprMix" }, float = true, size = "560 720", center = true,
+hl.window_rule({ name = "hyprmix", match = { class = "dev.local.HyprMix" }, float = true, size = "560 720",
     opacity = "1.0 override 1.0 override" })
+-- the mixer says where it wants to be through its title, read at map time:
+-- centred on its own, or in the place of HyprDuo's popup it replaces
+hl.window_rule({ name = "hyprmix-center", match = { class = "dev.local.HyprMix", initial_title = "^HyprMix$" }, center = true })
+hl.window_rule({ name = "hyprmix-bar", match = { class = "dev.local.HyprMix", initial_title = "^HyprMix \\(bar\\)$" },
+    move = "(monitor_w-window_w-12) 30" })
 hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, float = true, move = "1178 66" })
 -- under the sound module; the app pins its own top-right corner afterwards.
 -- Locked (Super+A) it stays open without the focus, and the inactive opacity

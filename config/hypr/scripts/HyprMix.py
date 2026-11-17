@@ -28,6 +28,10 @@ matugen regenerates on every wallpaper change. SIGUSR1 reloads the theme.
 
   HyprMix.py                  open on Outputs
   HyprMix.py --page inputs    open on Microphones (outputs / inputs / apps)
+  HyprMix.py --at-bar         open where HyprDuo's popup was: under the bar,
+                              top right. Its "full mixer" uses this, so the
+                              mixer takes the popup's place instead of
+                              appearing somewhere else on the screen.
 """
 
 import json
@@ -404,10 +408,13 @@ class Meter:
 class Mixer(Adw.ApplicationWindow):
     PAGES = ("outputs", "inputs", "apps")
 
-    def __init__(self, app, page="outputs"):
+    def __init__(self, app, page="outputs", at_bar=False):
         super().__init__(application=app, default_width=560, default_height=720)
         self.s = T[lang()]
-        self.set_title(self.s["title"])
+        # The title is never shown (the header carries the page switcher), so
+        # it does another job: Hyprland's rules match it at map time to centre
+        # the window, or to put it under the bar without a centred first frame.
+        self.set_title("HyprMix (bar)" if at_bar else "HyprMix")
         self.add_css_class("hm-root")
 
         self.snap = None
@@ -866,6 +873,25 @@ class Mixer(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
 
+def to_bar():
+    """Top right, under the bar, level with the tiled windows -- where
+    HyprDuo's popup sits. For a mixer already open somewhere else."""
+    try:
+        mon = next(m for m in json.loads(subprocess.run(
+            ["hyprctl", "monitors", "-j"], capture_output=True, text=True).stdout) if m["focused"])
+        gap = json.loads(subprocess.run(["hyprctl", "getoption", "general:gaps_out", "-j"],
+                                        capture_output=True, text=True).stdout)
+        border = json.loads(subprocess.run(["hyprctl", "getoption", "general:border_size", "-j"],
+                                           capture_output=True, text=True).stdout)
+        width = round(mon["width"] / (mon.get("scale") or 1))
+        x = mon["x"] + width - 560 - 12
+        y = mon["y"] + mon["reserved"][1] + int(str(gap["css"]).split()[0]) + border["int"]
+    except (ValueError, KeyError, StopIteration, OSError, IndexError):
+        return
+    subprocess.run(["hyprctl", "eval", "hl.dispatch(hl.dsp.window.move{ exact = true, "
+                    f'x = {x}, y = {y}, window = "class:{APP_ID}" }})'], capture_output=True)
+
+
 class App(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID,
@@ -876,12 +902,16 @@ class App(Adw.Application):
         page = None
         if "--page" in args and args.index("--page") + 1 < len(args):
             page = args[args.index("--page") + 1]
+        at_bar = "--at-bar" in args
         win = self.props.active_window
         if win is None:
-            win = Mixer(self, page or "outputs")
+            win = Mixer(self, page or "outputs", at_bar)
             signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
-        elif page:
-            win.show_page(page)
+        else:
+            if page:
+                win.show_page(page)
+            if at_bar:
+                to_bar()
         win.present()
         return 0
 

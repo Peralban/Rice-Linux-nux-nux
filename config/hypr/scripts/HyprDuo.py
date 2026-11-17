@@ -1110,10 +1110,18 @@ class Duo(Adw.ApplicationWindow):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         box.set_margin_start(5); box.set_margin_end(5)
         box.set_margin_top(4); box.set_margin_bottom(5)
-        mixer = os.path.join(os.path.dirname(os.path.realpath(__file__)), "HyprMix.py")
-        entries = [(self.s["mixer"], (mixer,) if os.path.exists(mixer) else ("pavucontrol", "-t", "3"))]
-        if self.snap.bt != "absent" and shutil.which("blueman-manager"):
-            entries.append((self.s["bt_settings"], ("blueman-manager",)))
+        here = os.path.dirname(os.path.realpath(__file__))
+        mixer = os.path.join(here, "HyprMix.py")
+        blue = os.path.join(here, "HyprBlue.py")
+        # The mixer opens where this popup is, and the popup goes: one takes
+        # the other's place rather than a second window appearing elsewhere.
+        entries = [(self.s["mixer"], (mixer, "--at-bar") if os.path.exists(mixer)
+                    else ("pavucontrol", "-t", "3"))]
+        if self.snap.bt != "absent":
+            if os.path.exists(blue):
+                entries.append((self.s["bt_settings"], (blue,)))
+            elif shutil.which("blueman-manager"):
+                entries.append((self.s["bt_settings"], ("blueman-manager",)))
         for label, argv in entries:
             if shutil.which(argv[0]) is None:
                 continue
@@ -1334,6 +1342,9 @@ class Duo(Adw.ApplicationWindow):
 
     @staticmethod
     def _power():
+        # A soft rfkill block is "off" too, and `power on` alone fails on it
+        # (org.bluez.Error.Blocked). The session user may lift it: no sudo.
+        run("rfkill", "unblock", "bluetooth", timeout=4)
         run("bluetoothctl", "power", "on", timeout=8)
 
     def reload_theme(self):

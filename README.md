@@ -2,7 +2,7 @@
 
 A Hyprland desktop on Arch Linux, grown out of the
 [JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) dotfiles and rebuilt
-around eight hand-written GTK4 applications.
+around nine hand-written GTK4 applications.
 
 One rule governs the whole repository: **no colour is ever written by hand.**
 The wallpaper decides the palette, and fourteen surfaces follow it — the bar,
@@ -48,7 +48,7 @@ it, regenerates one file per target, and tells each one to look again.
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | hyprlock | reads `hypr/colors.conf` | sourced at launch |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo\|Mix\|Screens)[.]py"` |
+| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo\|Mix\|Screens\|Blue)[.]py"` |
 | GTK 3 | `gtk-3.0/colors.css` | `gtk3-reload.sh` — restart, see Notes |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | swaync | imports `waybar/colors.css` | `swaync-client -rs` |
@@ -96,6 +96,7 @@ switcher, themed from the system palette.
 | **HyprDuo** | `Super + A`, or right-click the volume | The same sound on several headsets or speakers at once |
 | **HyprMix** | `Super + Shift + A`, or right-click the microphone | Sound mixer: outputs, microphones with a live meter, per-application volume and routing |
 | **HyprScreens** | `Super + Shift + D` | Monitor layout and modes, with a timed confirmation |
+| **HyprBlue** | `Super + Shift + B` | Bluetooth: power, devices, battery, search and pairing |
 | **HyprNotch** | `Super + Shift + N`, or hover | Media, calendar, system, file shelf, AirDrop, pinned note |
 | **HyprNotes** | `Super + N` | Notes as plain text files, sidebar at the screen edge |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
@@ -217,6 +218,13 @@ cards: volume up to 150 %, mute, *make default*, the port, and a level meter.
 Applications get their own volume and a menu to move them to another output or
 microphone.
 
+HyprDuo's *full mixer* opens it with `--at-bar`: in the popup's place, under the
+bar, while the popup goes — one panel turning into the other rather than a
+second window appearing elsewhere. Its window title is never shown (the header
+holds the page switcher), so it carries that wish to Hyprland's rules instead:
+`HyprMix` is centred, `HyprMix (bar)` is put under the bar, with no centred
+first frame.
+
 The meters are one `parec` per device, 16 kHz mono, started only for the page
 on screen: an output meter taps its monitor and costs nothing, a microphone
 meter opens the microphone, so nothing listens while nobody is looking. The dB
@@ -227,6 +235,23 @@ Updates come from `pactl subscribe`. The window is rebuilt only when the shape
 of things changes — a device or a stream comes or goes, a default or a port
 moves; volumes and mutes are updated in place, so a slider is never rebuilt
 under the finger dragging it.
+
+### HyprBlue
+
+Replaces blueman-manager: power, your devices (connect, disconnect, battery,
+automatic reconnection, rename, forget), and a 45-second search for new ones
+to pair. It talks to BlueZ over D-Bus rather than through `bluetoothctl`, so a
+device connecting or its battery dropping shows up without polling.
+
+*Off* is often an rfkill soft block — what airplane mode leaves behind — which
+BlueZ reports as `PowerState = off-blocked`, and on which setting `Powered`
+fails. Turning on lifts the block first; `/dev/rfkill` belongs to the session
+user, no sudo. HyprDuo's *turn on* had the same blind spot and does the same now.
+
+Pairing that needs a code goes through an `org.bluez.Agent1` the app registers.
+It becomes the *default* agent — the one asked when a phone pairs from its side
+— only while blueman's applet is not running, so as not to take that role from
+it behind its back.
 
 ### HyprScreens
 
@@ -283,6 +308,7 @@ music playing.
 | `Super + D` | Discord |
 | `Super + Shift + A` | Sound mixer |
 | `Super + Shift + D` | Displays |
+| `Super + Shift + B` | Bluetooth |
 | `Super + J` | Jellyfin |
 | `Super + C` | Colour picker |
 | `Super + N` | Open / hide the notes |
