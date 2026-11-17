@@ -94,6 +94,8 @@ G_SPEAKER = "\U000f04c3"
 G_LAPTOP = "\U000f0322"
 G_SCREEN = "\U000f0379"
 G_BT = "\U000f00af"
+G_BATTERY = "\U000f0079"
+BATTERY_LOW = 20
 G_LOGO = "\U000f0d38"      # several speakers
 G_LOCK = "\U000f033e"
 G_VOL = "\U000f057e"
@@ -184,6 +186,8 @@ window, window.background { background: transparent; }
   background: alpha(currentColor, 0.12);
 }
 .hd-root .hd-chip.hd-live { background: alpha(@accent_color, 0.20); color: @accent_color; }
+/* a headset's battery, beside its name; amber when it is time to charge */
+.hd-root .hd-chip.hd-low { background: alpha(#e8b339, 0.18); color: #e8b339; }
 .hd-root .hd-sec { font-size: 10px; letter-spacing: 1.6px; opacity: 0.65; }
 .hd-root .hd-count {
   font-size: 11px; padding: 1px 9px; border-radius: 999px;
@@ -990,6 +994,8 @@ class Duo(Adw.ApplicationWindow):
         name.set_hexpand(True)
         name.set_valign(Gtk.Align.CENTER)
         top.append(name)
+        if o.present and o.battery is not None:
+            top.append(self._battery(o.battery))
 
         if not sharing and o.name == self.snap.default:
             chip = self._label(self.s["default"], "hd-chip")
@@ -1090,6 +1096,14 @@ class Duo(Adw.ApplicationWindow):
                 and self._closing is None):
             self._closing = GLib.timeout_add(450, self._close_now)
 
+    def _battery(self, level):
+        """The battery as a pill beside the name: no line of its own."""
+        chip = self._label(f"{G_BATTERY} {level} %", "hd-chip")
+        chip.set_valign(Gtk.Align.CENTER)
+        if level < BATTERY_LOW:
+            chip.add_css_class("hd-low")
+        return chip
+
     def _hints(self):
         snap = self.snap
         hints = []
@@ -1153,6 +1167,8 @@ class Duo(Adw.ApplicationWindow):
             name.set_hexpand(True)
             name.set_valign(Gtk.Align.CENTER)
             row.append(name)
+            if d.battery is not None:
+                row.append(self._battery(d.battery))
 
             busy = d.mac in self.connecting
             if d.connected:
