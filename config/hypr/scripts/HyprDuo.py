@@ -108,6 +108,7 @@ T = {
     "fr": {
         "title": "Son", "sink": "Son partagé",
         "t_share": "Partage", "t_outputs": "Sorties", "t_inputs": "Micros", "t_apps": "Applis",
+        "pods": "Gauche {l}  ·  Droite {r}  ·  Boîtier {c}",
         "pinned": "Verrouillée : Super + A ou Échap pour fermer",
         "on": "Partagé", "off": "Une sortie",
         "none": "Aucune sortie", "none_sub": "PipeWire ne voit aucune carte son",
@@ -133,6 +134,7 @@ T = {
     "en": {
         "title": "Sound", "sink": "Shared audio",
         "t_share": "Share", "t_outputs": "Outputs", "t_inputs": "Mics", "t_apps": "Apps",
+        "pods": "Left {l}  ·  Right {r}  ·  Case {c}",
         "pinned": "Locked: Super + A or Esc to close",
         "on": "Shared", "off": "One output",
         "none": "No output", "none_sub": "PipeWire sees no sound card",
@@ -395,24 +397,25 @@ class Output:
         self.profile = None
         self.hfp = False
         self.battery = None
+        self.pods = None          # AirPods: (left, right, case)
 
     def key(self):
         """Everything that changes the layout. Volume and offset are left out:
         those are updated in place, so a slider is never rebuilt under the
         finger dragging it."""
         return (self.name, self.label, self.kind, self.present, self.codec,
-                tuple(self.codecs), self.profile, self.hfp, self.battery)
+                tuple(self.codecs), self.profile, self.hfp, self.battery, self.pods)
 
 
 class Device:
     """A paired Bluetooth audio device that has no output right now."""
 
-    def __init__(self, mac, name, connected, glyph, battery):
+    def __init__(self, mac, name, connected, glyph, battery, pods=None):
         self.mac, self.name, self.connected = mac, name, connected
-        self.glyph, self.battery = glyph, battery
+        self.glyph, self.battery, self.pods = glyph, battery, pods
 
     def key(self):
-        return (self.mac, self.name, self.connected, self.battery)
+        return (self.mac, self.name, self.connected, self.battery, self.pods)
 
 
 class Snapshot:
@@ -450,8 +453,116 @@ def configured_sink():
     return m.group(1) if m and m.group(1) not in SINKS else None
 
 
+class ApplePods:
+    """AirPods' battery, which BlueZ does not have.
+
+    Apple headphones report no standard battery level (no Battery1 on the
+    bus). They broadcast it instead, in a BLE "proximity" advert: manufacturer
+    data for Apple (0x004C), type 0x07, 25 bytes -- what an iPhone reads to
+    draw its battery widget. An AdvertisementMonitor asks the controller
+    itself to pass on only those adverts: passive, filtered in hardware, no
+    scan that would make the music stutter.
+
+    The advert comes from a random address, so it is matched to a paired
+    device by model instead: bytes 3-4 of the advert are the product id that
+    the device's Modalias carries (bluetooth:v004Cp2027 <-> 0x2027)."""
+
+    ROOT = "/dev/local/HyprDuo/monitors"
+    MONITOR = ROOT + "/apple"
+    TTL = 900                     # a level older than 15 minutes is not shown
+
+    OM_XML = """<node><interface name="org.freedesktop.DBus.ObjectManager">
+      <method name="GetManagedObjects"><arg type="a{oa{sa{sv}}}" direction="out"/></method>
+    </interface></node>"""
+    MON_XML = """<node><interface name="org.bluez.AdvertisementMonitor1">
+      <method name="Release"/><method name="Activate"/>
+      <method name="DeviceFound"><arg type="o" direction="in"/></method>
+      <method name="DeviceLost"><arg type="o" direction="in"/></method>
+      <property name="Type" type="s" access="read"/>
+      <property name="Patterns" type="a(yyay)" access="read"/>
+    </interface></node>"""
+
+    def __init__(self):
+        self.levels = {}          # product id -> (left, right, case, when)
+        self.watched = set()
+        try:
+            self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            self.bus.register_object(self.ROOT, Gio.DBusNodeInfo.new_for_xml(self.OM_XML).interfaces[0],
+                                     self._objects, None, None)
+            self.bus.register_object(self.MONITOR, Gio.DBusNodeInfo.new_for_xml(self.MON_XML).interfaces[0],
+                                     self._monitor_call, self._monitor_prop, None)
+            self.bus.signal_subscribe("org.bluez", "org.freedesktop.DBus.Properties",
+                                      "PropertiesChanged", None, None,
+                                      Gio.DBusSignalFlags.NONE, self._changed)
+            self.bus.call("org.bluez", "/org/bluez/hci0", "org.bluez.AdvertisementMonitorManager1",
+                          "RegisterMonitor", GLib.Variant("(o)", (self.ROOT,)), None,
+                          Gio.DBusCallFlags.NONE, -1, None, None)
+        except GLib.Error:
+            self.bus = None       # no Bluetooth, or no monitor support: no AirPods level
+
+    @staticmethod
+    def _props():
+        return {"Type": GLib.Variant("s", "or_patterns"),
+                "Patterns": GLib.Variant("a(yyay)", [(0, 0xFF, [0x4C, 0x00, 0x07, 0x19])])}
+
+    def _objects(self, _bus, _sender, _path, _iface, _method, _params, invocation):
+        invocation.return_value(GLib.Variant(
+            "(a{oa{sa{sv}}})", ({self.MONITOR: {"org.bluez.AdvertisementMonitor1": self._props()}},)))
+
+    def _monitor_prop(self, _bus, _sender, _path, _iface, prop):
+        return self._props()[prop]
+
+    def _monitor_call(self, _bus, _sender, _path, _iface, method, params, invocation):
+        if method == "DeviceFound":
+            device = params.unpack()[0]
+            self.watched.add(device)
+            self._read(device)
+        elif method == "DeviceLost":
+            self.watched.discard(params.unpack()[0])
+        invocation.return_value(None)
+
+    def _changed(self, _bus, _sender, path, _iface, _signal, params):
+        if path in self.watched and "ManufacturerData" in params.unpack()[1]:
+            self._read(path)
+
+    def _read(self, device):
+        try:
+            data = self.bus.call_sync(
+                "org.bluez", device, "org.freedesktop.DBus.Properties", "Get",
+                GLib.Variant("(ss)", ("org.bluez.Device1", "ManufacturerData")),
+                None, Gio.DBusCallFlags.NONE, 2000, None).unpack()[0].get(0x004C)
+        except GLib.Error:
+            return
+        if not data or len(data) < 8 or data[0] != 0x07:
+            return
+        # The layout OpenPods and AirStatus decode: byte 5 says which bud is
+        # which, byte 6 holds both buds' levels, byte 7 the case's. Each level
+        # is 0-10 in tens of percent; 15 means not reporting (in a closed case).
+        flip = not (data[5] >> 4) & 0x02
+        hi, lo = data[6] >> 4, data[6] & 0x0F
+        left, right = (hi, lo) if flip else (lo, hi)
+        pct = lambda v: v * 10 if v <= 10 else None   # noqa: E731
+        product = data[4] << 8 | data[3]
+        self.levels[product] = (pct(left), pct(right), pct(data[7] & 0x0F), time.monotonic())
+
+    def level(self, product):
+        """(the lowest bud, (left, right, case)) for a product id, or Nones."""
+        found = self.levels.get(product)
+        if not found or time.monotonic() - found[3] > self.TTL:
+            return None, None
+        left, right, case, _when = found
+        buds = [v for v in (left, right) if v is not None]
+        if not buds and case is None:
+            return None, None
+        return (min(buds) if buds else case), (left, right, case)
+
+
+APPLE = None                      # set once by the resident process
+
+
 def bluetooth():
-    """(power, {mac: (name, connected, glyph, battery)}) for audio devices."""
+    """(power, {mac: (name, connected, glyph, battery, pods)}) for audio
+    devices; `pods` is (left, right, case) for AirPods, else None."""
     if shutil.which("bluetoothctl") is None:
         return "absent", {}
     show = run("bluetoothctl", "show", timeout=3)
@@ -477,8 +588,12 @@ def bluetooth():
         name = (re.search(r"Alias:\s*(.+)", text) or [None, m.group(2)])[1].strip()
         connected = bool(re.search(r"\n\s*Connected:\s*yes", text))
         bat = re.search(r"Battery Percentage:\s*\S+\s*\((\d+)\)", text)
+        battery, pods = (int(bat.group(1)) if bat else None), None
+        alias = re.search(r"Modalias:\s*bluetooth:v004Cp([0-9A-Fa-f]{4})", text)
+        if battery is None and alias and APPLE is not None:
+            battery, pods = APPLE.level(int(alias.group(1), 16))
         glyph = G_SPEAKER if "speaker" in icon else G_HEAD
-        found[mac] = (name, connected, glyph, int(bat.group(1)) if bat else None)
+        found[mac] = (name, connected, glyph, battery, pods)
     return power, found
 
 
@@ -527,7 +642,7 @@ def snapshot(selected, names=None):
                 key=lambda pc: (pc[1] is not None, pc[1] or ""))
             o.glyph = G_SPEAKER if "speaker" in ff else G_HEAD
             if o.mac in paired:
-                o.battery = paired[o.mac][3]
+                o.battery, o.pods = paired[o.mac][3], paired[o.mac][4]
         else:
             ptype = (port.get("type") or "").lower()
             if props.get("device.bus") == "usb":
@@ -566,9 +681,9 @@ def snapshot(selected, names=None):
     snap.outputs = sorted(by_name.values(), key=lambda o: (order[o.kind], o.label.lower()))
 
     live = {o.mac for o in snap.outputs if o.present and o.mac}
-    for mac, (name, connected, glyph, bat) in paired.items():
+    for mac, (name, connected, glyph, bat, pods) in paired.items():
         if mac not in live:
-            snap.devices.append(Device(mac, name, connected, glyph, bat))
+            snap.devices.append(Device(mac, name, connected, glyph, bat, pods))
     snap.devices.sort(key=lambda d: (not d.connected, d.name.lower()))
     return snap
 
@@ -995,7 +1110,7 @@ class Duo(Adw.ApplicationWindow):
         name.set_valign(Gtk.Align.CENTER)
         top.append(name)
         if o.present and o.battery is not None:
-            top.append(self._battery(o.battery))
+            top.append(self._battery(o.battery, o.pods))
 
         if not sharing and o.name == self.snap.default:
             chip = self._label(self.s["default"], "hd-chip")
@@ -1096,10 +1211,16 @@ class Duo(Adw.ApplicationWindow):
                 and self._closing is None):
             self._closing = GLib.timeout_add(450, self._close_now)
 
-    def _battery(self, level):
-        """The battery as a pill beside the name: no line of its own."""
+    def _battery(self, level, pods=None):
+        """The battery as a pill beside the name: no line of its own. For
+        AirPods it is the lowest bud -- the one that will stop first -- and
+        the pointer shows each bud and the case."""
         chip = self._label(f"{G_BATTERY} {level} %", "hd-chip")
         chip.set_valign(Gtk.Align.CENTER)
+        if pods:
+            show = lambda v: "\u2014" if v is None else f"{v} %"   # noqa: E731
+            chip.set_tooltip_text(self.s["pods"].format(l=show(pods[0]), r=show(pods[1]),
+                                                        c=show(pods[2])))
         if level < BATTERY_LOW:
             chip.add_css_class("hd-low")
         return chip
@@ -1168,7 +1289,7 @@ class Duo(Adw.ApplicationWindow):
             name.set_valign(Gtk.Align.CENTER)
             row.append(name)
             if d.battery is not None:
-                row.append(self._battery(d.battery))
+                row.append(self._battery(d.battery, d.pods))
 
             busy = d.mac in self.connecting
             if d.connected:
@@ -1468,6 +1589,9 @@ class App(Adw.Application):
             self.add_action(action)
 
     def _window(self, hidden, pin=False, tab="share"):
+        global APPLE
+        if APPLE is None:
+            APPLE = ApplePods()
         if self.win is None:
             self.hold()                   # hidden or not, stay resident
             self.win = Duo(self, pinned=pin, hidden=hidden, tab=tab)
