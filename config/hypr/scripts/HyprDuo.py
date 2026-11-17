@@ -483,7 +483,7 @@ class ApplePods:
     </interface></node>"""
 
     def __init__(self):
-        self.levels = {}          # product id -> (left, right, case, when)
+        self.levels = {}          # product id -> {"left"|"right"|"case": (level, when)}
         self.watched = set()
         try:
             self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
@@ -543,14 +543,22 @@ class ApplePods:
         left, right = (hi, lo) if flip else (lo, hi)
         pct = lambda v: v * 10 if v <= 10 else None   # noqa: E731
         product = data[4] << 8 | data[3]
-        self.levels[product] = (pct(left), pct(right), pct(data[7] & 0x0F), time.monotonic())
+        # Each part on its own: an advert often reports one bud only, the
+        # other as "unknown". Taking the advert whole made a bud at 20 %
+        # vanish behind its twin at 100 %, and the pill said 100 %.
+        known = self.levels.setdefault(product, {})
+        now = time.monotonic()
+        for part, value in (("left", pct(left)), ("right", pct(right)),
+                            ("case", pct(data[7] & 0x0F))):
+            if value is not None:
+                known[part] = (value, now)
 
     def level(self, product):
         """(the lowest bud, (left, right, case)) for a product id, or Nones."""
-        found = self.levels.get(product)
-        if not found or time.monotonic() - found[3] > self.TTL:
-            return None, None
-        left, right, case, _when = found
+        known = self.levels.get(product, {})
+        now = time.monotonic()
+        fresh = {part: value for part, (value, when) in known.items() if now - when <= self.TTL}
+        left, right, case = fresh.get("left"), fresh.get("right"), fresh.get("case")
         buds = [v for v in (left, right) if v is not None]
         if not buds and case is None:
             return None, None
