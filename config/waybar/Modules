@@ -240,7 +240,7 @@
 		"chromium": "",
 		"default": "",
 		"firefox": "",
-		"kdeconnect": "",
+		"kdeconnect": "󰄜",
 		"mopidy": "",
 		"mpv": "󰐹",
 		"spotify": "",
@@ -310,7 +310,7 @@
 	"format-icons": {
 		"headphone": "",
 		"hands-free": "",
-		"headset": "",
+		"headset": "󰋎",
 		"phone": "",
 		"portable": "",
 		"car": "",
@@ -335,12 +335,12 @@
 "pulseaudio#1": {
   "format": "{icon} {volume}%",
   "format-bluetooth": "{icon} {volume}%",
-  "format-bluetooth-muted": " {icon}",
+  "format-bluetooth-muted": "󰖁 {icon}",
   "format-muted": "󰸈",
   "format-icons": {
-      "headphone": "",
+      "headphone": "󰋋",
       "hands-free": "",
-      "headset": "",
+      "headset": "󰋎",
       "phone": "",
       "portable": "",
       "car": "",
