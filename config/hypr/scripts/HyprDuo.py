@@ -111,8 +111,6 @@ T = {
         "none": "Aucune sortie", "none_sub": "PipeWire ne voit aucune carte son",
         "default": "Par défaut",
         "p_speaker": "Haut-parleurs", "p_jack": "Prise casque",
-        "k_bt": "Bluetooth", "k_builtin": "Intégré", "k_usb": "USB", "k_hdmi": "HDMI",
-        "absent": "Absente", "absent_sub": "Reviendra dans le partage dès qu'elle se reconnecte",
         "hfp": "Micro actif : qualité réduite",
         "a2dp": "Repasser en A2DP",
         "codec": "Codec", "auto": "Auto",
@@ -122,9 +120,6 @@ T = {
         "devices": "Bluetooth",
         "connect": "Connecter", "connecting": "Connexion…",
         "audio_on": "Activer l'audio",
-        "d_off": "Déconnecté", "d_noaudio": "Connecté, audio coupé",
-        "bt_off": "Bluetooth éteint", "bt_off_sub": "Allume-le pour retrouver tes casques",
-        "power_on": "Allumer",
         "w_dead": "Aucune sortie du partage n'est branchée : le son ne sort nulle part.",
         "stop": "Arrêter",
         "w_crowd": "Au-delà de {n} appareils Bluetooth la radio sature : attends-toi à des coupures. "
@@ -141,8 +136,6 @@ T = {
         "none": "No output", "none_sub": "PipeWire sees no sound card",
         "default": "Default",
         "p_speaker": "Speakers", "p_jack": "Headphone jack",
-        "k_bt": "Bluetooth", "k_builtin": "Built-in", "k_usb": "USB", "k_hdmi": "HDMI",
-        "absent": "Away", "absent_sub": "Rejoins the share as soon as it reconnects",
         "hfp": "Mic in use: lower quality",
         "a2dp": "Back to A2DP",
         "codec": "Codec", "auto": "Auto",
@@ -152,9 +145,6 @@ T = {
         "devices": "Bluetooth",
         "connect": "Connect", "connecting": "Connecting…",
         "audio_on": "Turn audio on",
-        "d_off": "Disconnected", "d_noaudio": "Connected, audio off",
-        "bt_off": "Bluetooth is off", "bt_off_sub": "Turn it on to find your headsets",
-        "power_on": "Turn on",
         "w_dead": "None of the shared outputs is connected: the sound goes nowhere.",
         "stop": "Stop",
         "w_crowd": "Past {n} Bluetooth devices the radio saturates: expect dropouts. "
@@ -917,7 +907,6 @@ class Duo(Adw.ApplicationWindow):
         devices = self._devices()
         if devices is not None:
             page.append(self._sep())
-            page.append(self._section(self.s["devices"], None))
             page.append(devices)
 
         footer = self._footer()
@@ -979,18 +968,6 @@ class Duo(Adw.ApplicationWindow):
         key = self.PORTS.get(o.port) if o.kind == "builtin" else None
         return self.s[key] if key else o.label
 
-    def _meta(self, o):
-        if not o.present:
-            return self.s["absent"]
-        bits = [self.s["k_" + o.kind]]
-        if o.codec:
-            bits.append(CODECS.get(o.codec, o.codec.upper()))
-        if o.battery is not None:
-            bits.append(f"{o.battery} %")
-        if o.offset:
-            bits.append(f"+{o.offset} ms")
-        return "  ·  ".join(bits)
-
     def _row(self, o):
         sharing = bool(self.snap.share)
         picked = o.name in self.selected
@@ -1009,10 +986,10 @@ class Duo(Adw.ApplicationWindow):
         top.append(check)
         top.append(self._label(o.glyph, "hd-icon"))
 
-        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
-        texts.append(self._label(self._name(o), "hd-name", ellipsize=True))
-        texts.append(self._label(self._meta(o), "hd-meta", ellipsize=True))
-        top.append(texts)
+        name = self._label(self._name(o), "hd-name", ellipsize=True)
+        name.set_hexpand(True)
+        name.set_valign(Gtk.Align.CENTER)
+        top.append(name)
 
         if not sharing and o.name == self.snap.default:
             chip = self._label(self.s["default"], "hd-chip")
@@ -1021,9 +998,6 @@ class Duo(Adw.ApplicationWindow):
         if o.present:
             top.append(self._menu(o))
         card.append(top)
-
-        if not o.present and picked:
-            card.append(self._label(self.s["absent_sub"], "hd-meta", wrap=True))
 
         if o.hfp:
             warn = Gtk.Box(spacing=8)
@@ -1150,34 +1124,35 @@ class Duo(Adw.ApplicationWindow):
         snap = self.snap
         if snap.bt == "absent":
             return None
-        if snap.bt == "off":
-            box = Gtk.Box(spacing=8)
-            box.set_margin_start(14); box.set_margin_end(10); box.set_margin_bottom(8)
-            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
-            texts.append(self._label(self.s["bt_off"], "hd-name"))
-            texts.append(self._label(self.s["bt_off_sub"], "hd-meta", wrap=True))
-            box.append(texts)
-            on = Gtk.Button(label=self.s["power_on"], valign=Gtk.Align.CENTER)
-            on.add_css_class("hd-act"); on.add_css_class("hd-go")
-            on.connect("clicked", lambda _b: self._act(self._power))
-            box.append(on)
-            return box
-        if not snap.devices:
-            return None
-
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         inner.set_margin_start(6); inner.set_margin_end(6); inner.set_margin_bottom(4)
+
+        # One row, one switch: what the radio is doing needs no sentence.
+        head = Gtk.Box(spacing=10)
+        head.add_css_class("hd-row")
+        head.append(self._label(G_BT, "hd-icon"))
+        title = self._label(self.s["devices"], "hd-name")
+        title.set_hexpand(True)
+        title.set_valign(Gtk.Align.CENTER)
+        head.append(title)
+        power = Gtk.Switch(active=snap.bt == "on", valign=Gtk.Align.CENTER)
+        power.set_sensitive(not self.busy)
+        power.connect("notify::active", lambda w, _p: None if w.get_active() == (snap.bt == "on")
+                      else self._act(self._power if w.get_active() else self._power_off))
+        head.append(power)
+        inner.append(head)
+        if snap.bt != "on":
+            inner.set_margin_top(4)
+            return inner
+
         for d in snap.devices:
             row = Gtk.Box(spacing=10)
             row.add_css_class("hd-row")
             row.append(self._label(d.glyph, "hd-icon"))
-            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
-            texts.append(self._label(d.name, "hd-name", ellipsize=True))
-            meta = self.s["d_noaudio"] if d.connected else self.s["d_off"]
-            if d.battery is not None:
-                meta += f"  ·  {d.battery} %"
-            texts.append(self._label(meta, "hd-meta", ellipsize=True))
-            row.append(texts)
+            name = self._label(d.name, "hd-name", ellipsize=True)
+            name.set_hexpand(True)
+            name.set_valign(Gtk.Align.CENTER)
+            row.append(name)
 
             busy = d.mac in self.connecting
             if d.connected:
@@ -1432,6 +1407,10 @@ class Duo(Adw.ApplicationWindow):
     @staticmethod
     def _bt(verb, mac):
         run("bluetoothctl", verb, mac, timeout=20)
+
+    @staticmethod
+    def _power_off():
+        run("bluetoothctl", "power", "off", timeout=8)
 
     @staticmethod
     def _power():

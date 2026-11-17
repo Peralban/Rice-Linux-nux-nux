@@ -112,10 +112,6 @@ T = {
     },
 }
 
-CODECS = {"sbc": "SBC", "sbc_xq": "SBC-XQ", "aac": "AAC", "aptx": "aptX",
-          "aptx_hd": "aptX HD", "ldac": "LDAC", "lc3": "LC3", "msbc": "mSBC",
-          "cvsd": "CVSD", "opus_05": "Opus"}
-
 CSS = b"""
 .hm-root, .hm-root button, .hm-root label, .hm-root dropdown {
   font-family: "JetBrainsMono Nerd Font Propo", "JetBrains Mono", monospace;
@@ -608,15 +604,6 @@ class MixerPanel:
             return self.s["builtin_out" if d.kind == "sink" else "builtin_in"]
         return d.label
 
-    def _kind_label(self, d):
-        return self.s["k_" + d.where]
-
-    def _port_label(self, d):
-        for name, desc, _avail in d.ports:
-            if name == d.port:
-                return desc
-        return None
-
     def _device_card(self, d, is_default):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
         card.add_css_class("hm-card")
@@ -627,13 +614,7 @@ class MixerPanel:
         top.append(self._label(d.glyph, "hm-icon"))
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
         texts.append(self._label(self._name(d), "hm-name", ellipsize=True))
-        bits = [self._kind_label(d)]
-        if d.codec:
-            bits.append(CODECS.get(d.codec, d.codec.upper()))
-        port = self._port_label(d)
-        if port and len(d.ports) <= 1:
-            bits.append(port)
-        texts.append(self._label("  ·  ".join(bits), "hm-meta", ellipsize=True))
+        texts.set_valign(Gtk.Align.CENTER)
         top.append(texts)
 
         if is_default:
