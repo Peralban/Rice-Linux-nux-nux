@@ -1,0 +1,893 @@
+#!/usr/bin/env python3
+"""HyprMix -- the sound mixer: outputs, microphones, applications (FR / EN).
+
+Replaces pavucontrol, with the desktop's own look. Three pages:
+
+  * Outputs and Microphones: one card per device -- volume up to 150 %, mute,
+    make it the default, pick its port, and a live level meter.
+  * Applications: every stream playing or recording -- its own volume and
+    mute, and which output (or microphone) it goes through.
+
+Everything goes through `pactl`, which pipewire-pulse answers; `pactl
+subscribe` says when something changes, so the window follows the system
+rather than polling it.
+
+Level meters: one `parec` per device, mono 16 kHz in 40 ms chunks, started
+only for the page on screen and stopped when it is left. Reading an output
+taps its monitor, which costs nothing; reading a microphone opens it, which
+is the point of a microphone meter. Those streams carry this app's id, so
+they never show up in its own Applications page.
+
+The window is rebuilt only when the shape of things changes (a device or a
+stream comes or goes, a default or a port changes). Volumes, mutes and
+meters are updated in place, so a slider is never rebuilt under the finger
+dragging it.
+
+Like the other panels, it has no palette of its own: it inherits GTK's, which
+matugen regenerates on every wallpaper change. SIGUSR1 reloads the theme.
+
+  HyprMix.py                  open on Outputs
+  HyprMix.py --page inputs    open on Microphones (outputs / inputs / apps)
+"""
+
+import json
+import math
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+
+APP_ID = "dev.local.HyprMix"
+LANG_FILE = os.path.expanduser("~/.config/hypr/scripts/.hyprsettings-lang")
+SCRIPTS = os.path.dirname(os.path.realpath(__file__))
+
+VOLUME_MAX = 150
+METER_RATE = 16000
+METER_CHUNK = METER_RATE * 2 * 40 // 1000      # 40 ms of s16 mono
+
+# HyprDuo's combined output: shown, but its own streams into the real
+# outputs are plumbing, not applications.
+DUO_SINKS = ("hyprduo-a", "hyprduo-b")
+
+G_HEAD = "\U000f02cb"
+G_HEADSET = "\U000f02ce"
+G_SPEAKER = "\U000f04c3"
+G_LAPTOP = "\U000f0322"
+G_SCREEN = "\U000f0379"
+G_MIC = "\U000f036c"
+G_SHARE = "\U000f0d38"
+G_VOL = "\U000f057e"
+G_MUTE = "\U000f0581"
+G_MIC_OFF = "\U000f036d"
+G_APP = "\U000f075a"
+
+T = {
+    "fr": {
+        "title": "Mixeur",
+        "outputs": "Sorties", "inputs": "Micros", "apps": "Applications",
+        "default": "Par défaut", "make_default": "Par défaut",
+        "make_default_tip": "Faire de cette sortie celle par défaut",
+        "make_default_in": "Faire de ce micro celui par défaut",
+        "mute": "Couper", "unmute": "Rétablir",
+        "port": "Port", "unplugged": "débranché",
+        "k_bt": "Bluetooth", "k_usb": "USB", "k_hdmi": "HDMI", "k_builtin": "Intégré",
+        "k_virtual": "Virtuel", "k_shared": "Partage HyprDuo",
+        "builtin_out": "Carte son intégrée", "builtin_in": "Micro intégré",
+        "playing": "Lecture", "recording": "Enregistrement",
+        "no_out": "Aucune sortie", "no_in": "Aucun micro",
+        "no_in_sub": "Branche un micro ou un casque-micro",
+        "no_play": "Aucune application ne joue de son",
+        "no_rec": "Aucune application n'enregistre",
+        "paused": "en pause",
+        "share": "Partager le son…",
+        "unknown_app": "Application",
+    },
+    "en": {
+        "title": "Mixer",
+        "outputs": "Outputs", "inputs": "Microphones", "apps": "Applications",
+        "default": "Default", "make_default": "Make default",
+        "make_default_tip": "Make this the default output",
+        "make_default_in": "Make this the default microphone",
+        "mute": "Mute", "unmute": "Unmute",
+        "port": "Port", "unplugged": "unplugged",
+        "k_bt": "Bluetooth", "k_usb": "USB", "k_hdmi": "HDMI", "k_builtin": "Built-in",
+        "k_virtual": "Virtual", "k_shared": "HyprDuo share",
+        "builtin_out": "Built-in audio", "builtin_in": "Built-in microphone",
+        "playing": "Playing", "recording": "Recording",
+        "no_out": "No output", "no_in": "No microphone",
+        "no_in_sub": "Plug in a microphone or a headset",
+        "no_play": "No application is playing sound",
+        "no_rec": "No application is recording",
+        "paused": "paused",
+        "share": "Share the sound…",
+        "unknown_app": "Application",
+    },
+}
+
+CODECS = {"sbc": "SBC", "sbc_xq": "SBC-XQ", "aac": "AAC", "aptx": "aptX",
+          "aptx_hd": "aptX HD", "ldac": "LDAC", "lc3": "LC3", "msbc": "mSBC",
+          "cvsd": "CVSD", "opus_05": "Opus"}
+
+CSS = b"""
+/* Nearly opaque: a window this dense has to read over anything behind it. */
+window.hm-root, window.hm-root.background {
+  background: alpha(@window_bg_color, 0.97);
+}
+.hm-root, .hm-root button, .hm-root label, .hm-root dropdown {
+  font-family: "JetBrainsMono Nerd Font Propo", "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+.hm-root headerbar { background: transparent; box-shadow: none; }
+
+/* bare classes lose to `.hm-root label`, hence the prefix on every label rule */
+.hm-root .hm-sec { font-size: 10px; letter-spacing: 1.6px; opacity: 0.65; }
+.hm-root .hm-name { font-weight: 700; font-size: 12.5px; }
+.hm-root .hm-meta { font-size: 11px; opacity: 0.66; }
+.hm-root .hm-icon { font-size: 18px; min-width: 24px; }
+.hm-root .hm-value { font-size: 11px; min-width: 42px; }
+.hm-root .hm-chip {
+  font-size: 11px; padding: 2px 10px; border-radius: 999px;
+  background: alpha(@accent_color, 0.20); color: @accent_color;
+}
+
+.hm-card {
+  padding: 10px 12px; border-radius: 10px;
+  background: alpha(currentColor, 0.045);
+  border: 1px solid alpha(currentColor, 0.08);
+}
+.hm-card.hm-default {
+  background: alpha(@accent_color, 0.08);
+  border-color: alpha(@accent_color, 0.25);
+}
+.hm-default .hm-icon { color: @accent_color; }
+.hm-card.hm-quiet { opacity: 0.6; }
+
+.hm-root button.hm-act {
+  min-height: 24px; padding: 0 10px; font-size: 11px;
+  border-radius: 7px; background: none;
+  border: 1px solid alpha(currentColor, 0.28); box-shadow: none;
+}
+.hm-root button.hm-act:hover { background: alpha(@accent_color, 0.16); }
+.hm-root button.hm-round {
+  min-width: 30px; min-height: 30px; padding: 0; border-radius: 999px;
+  background: alpha(currentColor, 0.07); border: none; box-shadow: none;
+}
+.hm-root button.hm-round label { font-size: 15px; }
+.hm-root button.hm-round:hover { background: alpha(@accent_color, 0.18); }
+.hm-root button.hm-round.hm-muted { background: alpha(#f2777a, 0.22); color: #f2777a; }
+
+.hm-root scale { padding: 0; margin: 0 2px; }
+.hm-root scale trough { min-height: 5px; border-radius: 999px; }
+.hm-root scale highlight { border-radius: 999px; }
+.hm-root scale slider { min-width: 14px; min-height: 14px; margin: -5px; }
+.hm-muted-card scale highlight { background: alpha(currentColor, 0.30); }
+
+/* the meter: a thin line under the slider, accent while the signal is sane,
+   amber near the top, red when it clips */
+.hm-root levelbar trough { min-height: 3px; padding: 0; border: none;
+  background: alpha(currentColor, 0.08); border-radius: 999px; }
+.hm-root levelbar block { min-height: 3px; border-radius: 999px; border: none; }
+.hm-root levelbar block.filled.low { background: @accent_color; }
+.hm-root levelbar block.filled.high { background: #e8b339; }
+.hm-root levelbar block.filled.full { background: #f2777a; }
+.hm-root levelbar block.empty { background: transparent; }
+
+.hm-root dropdown > button { min-height: 24px; padding: 0 8px; font-size: 11px; }
+.hm-empty { margin: 30px 20px; }
+"""
+
+
+# -- helpers ----------------------------------------------------------------
+
+def lang():
+    try:
+        with open(LANG_FILE, encoding="utf-8") as fh:
+            v = fh.read().strip()
+            if v in T:
+                return v
+    except OSError:
+        pass
+    return "fr"
+
+
+def pactl(*args, timeout=5):
+    try:
+        return subprocess.run(["pactl", *args], capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+
+def pactl_json(*args):
+    out = pactl("-f", "json", *args)
+    try:
+        return json.loads(out.stdout) if out and out.returncode == 0 else []
+    except ValueError:
+        return []
+
+
+def fire(*args):
+    """A pactl command whose answer nobody waits for: volume while dragging."""
+    try:
+        subprocess.Popen(["pactl", *args], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def spawn(*argv):
+    try:
+        subprocess.Popen(argv, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def percent(volume):
+    try:
+        return max(int(ch["value_percent"].rstrip("%")) for ch in volume.values())
+    except (AttributeError, ValueError, KeyError):
+        return 0
+
+
+# -- the model --------------------------------------------------------------
+
+class Device:
+    """A sink or a source."""
+
+    def __init__(self, raw, kind):
+        props = raw.get("properties", {})
+        self.kind = kind                         # "sink" / "source"
+        self.index = raw.get("index")
+        self.name = raw.get("name", "")
+        self.label = raw.get("description") or self.name
+        self.volume = percent(raw.get("volume", {}))
+        self.mute = bool(raw.get("mute"))
+        self.port = raw.get("active_port")
+        self.ports = [(p.get("name"), p.get("description") or p.get("name"),
+                       p.get("availability") != "not available")
+                      for p in raw.get("ports") or []]
+        api = props.get("device.api")
+        ff = (props.get("device.form_factor") or "") + (props.get("device.icon_name") or "")
+        self.codec = props.get("api.bluez5.codec")
+        if self.name in DUO_SINKS:
+            self.where, self.glyph = "shared", G_SHARE
+        elif api == "bluez5":
+            self.where = "bt"
+            self.glyph = G_HEADSET if "headset" in ff else (
+                G_SPEAKER if "speaker" in ff else G_HEAD)
+        elif api == "alsa":
+            ptype = ""
+            for p in raw.get("ports") or []:
+                if p.get("name") == self.port:
+                    ptype = (p.get("type") or "").lower()
+            if props.get("device.bus") == "usb":
+                self.where = "usb"
+            elif ptype in ("hdmi", "spdif") or "hdmi" in self.name:
+                self.where = "hdmi"
+            else:
+                self.where = "builtin"
+            if kind == "source":
+                self.glyph = G_HEADSET if "head" in ff else G_MIC
+            elif self.where == "hdmi":
+                self.glyph = G_SCREEN
+            elif "head" in ff or ptype == "headphones":
+                self.glyph = G_HEAD
+            else:
+                self.glyph = G_LAPTOP if self.where == "builtin" else G_SPEAKER
+        else:
+            self.where = "virtual"
+            self.glyph = G_MIC if kind == "source" else G_SPEAKER
+        # The node to read a level from: an output's monitor, a microphone itself.
+        self.tap = (raw.get("monitor_source") if kind == "sink" else self.name)
+
+    def key(self):
+        return (self.kind, self.name, self.label, self.port, tuple(self.ports),
+                self.where, self.glyph, self.codec)
+
+
+class Stream:
+    """An application playing (sink-input) or recording (source-output)."""
+
+    def __init__(self, raw, kind):
+        props = raw.get("properties", {})
+        self.kind = kind                         # "play" / "rec"
+        self.index = raw.get("index")
+        self.target = raw.get("sink") if kind == "play" else raw.get("source")
+        self.volume = percent(raw.get("volume", {}))
+        self.mute = bool(raw.get("mute"))
+        self.corked = bool(raw.get("corked"))
+        self.app = (props.get("application.name") or props.get("application.process.binary")
+                    or props.get("node.name") or "")
+        media = props.get("media.name") or ""
+        self.media = "" if media == self.app else media
+        self.icon = props.get("application.icon_name") or props.get("application.process.binary")
+        self.has_volume = bool(raw.get("has_volume", True))
+
+    def key(self):
+        return (self.kind, self.index, self.target, self.app, self.media, self.corked, self.icon)
+
+
+class Snapshot:
+    def __init__(self):
+        self.sinks, self.sources, self.playing, self.recording = [], [], [], []
+        self.default_sink = self.default_source = None
+
+    def key(self):
+        return (tuple(d.key() for d in self.sinks), tuple(d.key() for d in self.sources),
+                tuple(s.key() for s in self.playing), tuple(s.key() for s in self.recording),
+                self.default_sink, self.default_source)
+
+
+def snapshot():
+    snap = Snapshot()
+    snap.sinks = [Device(s, "sink") for s in pactl_json("list", "sinks")]
+    snap.sources = [Device(s, "source") for s in pactl_json("list", "sources")
+                    if (s.get("properties", {}).get("device.class") != "monitor"
+                        and not s.get("name", "").endswith(".monitor"))]
+    for raw in pactl_json("list", "sink-inputs"):
+        props = raw.get("properties", {})
+        if props.get("application.id") == APP_ID:
+            continue
+        if (props.get("node.name") or "").startswith("output.hyprduo"):
+            continue                              # HyprDuo's plumbing
+        snap.playing.append(Stream(raw, "play"))
+    for raw in pactl_json("list", "source-outputs"):
+        props = raw.get("properties", {})
+        if props.get("application.id") == APP_ID:
+            continue                              # our own meters
+        snap.recording.append(Stream(raw, "rec"))
+    for attr, cmd in (("default_sink", "get-default-sink"), ("default_source", "get-default-source")):
+        out = pactl(cmd)
+        setattr(snap, attr, out.stdout.strip() if out and out.returncode == 0 else None)
+    order = {"shared": 0, "bt": 1, "usb": 2, "builtin": 3, "hdmi": 4, "virtual": 5}
+    for devices in (snap.sinks, snap.sources):
+        devices.sort(key=lambda d: (order.get(d.where, 9), d.label.lower()))
+    snap.playing.sort(key=lambda s: (s.corked, s.app.lower()))
+    snap.recording.sort(key=lambda s: s.app.lower())
+    return snap
+
+
+# -- level meters -----------------------------------------------------------
+
+class Meter:
+    """`parec` on one node, reporting a 0..1 level 25 times a second."""
+
+    def __init__(self, node, on_level):
+        self.on_level = on_level
+        self.proc = None
+        try:
+            self.proc = subprocess.Popen(
+                ["parec", "--raw", "--format=s16le", "--channels=1",
+                 f"--rate={METER_RATE}", "--latency-msec=40", "-d", node,
+                 f"--property=application.id={APP_ID}",
+                 "--property=application.name=HyprMix",
+                 "--property=media.name=level meter",
+                 "--client-name=HyprMix"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except OSError:
+            return
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        stream = self.proc.stdout
+        while True:
+            chunk = stream.read(METER_CHUNK)
+            if not chunk:
+                return
+            peak = 0
+            view = memoryview(chunk).cast("h") if len(chunk) % 2 == 0 else ()
+            for sample in view[::4]:          # every 4th sample is plenty for a peak
+                if sample > peak:
+                    peak = sample
+                elif -sample > peak:
+                    peak = -sample
+            # -60 dB .. 0 dB onto 0 .. 1: a meter in dB reads like an ear does
+            level = 0.0 if peak == 0 else max(0.0, min(1.0, (20 * math.log10(peak / 32768) + 60) / 60))
+            GLib.idle_add(self.on_level, level)
+
+    def stop(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+
+
+# -- the window -------------------------------------------------------------
+
+class Mixer(Adw.ApplicationWindow):
+    PAGES = ("outputs", "inputs", "apps")
+
+    def __init__(self, app, page="outputs"):
+        super().__init__(application=app, default_width=560, default_height=720)
+        self.s = T[lang()]
+        self.set_title(self.s["title"])
+        self.add_css_class("hm-root")
+
+        self.snap = None
+        self.shape = None
+        self.widgets = {}            # id -> (scale, value label, mute button, card)
+        self.meters = {}             # tap node -> Meter
+        self.bars = {}               # tap node -> Gtk.LevelBar
+        self.levels = {}             # tap node -> smoothed level
+        self.touched = {}
+        self.pending_vol = {}
+        self._quiet = False
+        self._probing = False
+        self._again = False
+        self._poke_id = None
+        self._events = None
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.stack = Adw.ViewStack()
+        self.pages = {}
+        for key, icon in (("outputs", "audio-speakers-symbolic"),
+                          ("inputs", "audio-input-microphone-symbolic"),
+                          ("apps", "applications-multimedia-symbolic")):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.set_margin_start(14); box.set_margin_end(14)
+            box.set_margin_top(6); box.set_margin_bottom(14)
+            scroller = Gtk.ScrolledWindow(child=box, vexpand=True)
+            scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            self.stack.add_titled_with_icon(scroller, key, self.s[key], icon)
+            self.pages[key] = box
+        self.stack.set_visible_child_name(page if page in self.PAGES else "outputs")
+        self.stack.connect("notify::visible-child-name", lambda *_: self._sync_meters())
+
+        header = Adw.HeaderBar()
+        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
+        header.set_title_widget(switcher)
+        if os.path.exists(os.path.join(SCRIPTS, "HyprDuo.py")):
+            share = Gtk.Button(child=Gtk.Label(label=G_SHARE))
+            share.add_css_class("hm-round")
+            share.set_tooltip_text(self.s["share"])
+            share.connect("clicked", lambda _b: spawn(os.path.join(SCRIPTS, "HyprDuo.py"), "--pin"))
+            header.pack_end(share)
+
+        view = Adw.ToolbarView()
+        view.add_top_bar(header)
+        view.set_content(self.stack)
+        self.set_content(view)
+
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._on_key)
+        self.add_controller(keys)
+        self.connect("close-request", self._on_close)
+
+        self.refresh()
+        self._watch()
+
+    def show_page(self, page):
+        if page in self.PAGES:
+            self.stack.set_visible_child_name(page)
+
+    def _on_key(self, _c, keyval, _kc, _st):
+        if keyval == Gdk.KEY_Escape:
+            self.close()
+            return Gdk.EVENT_STOP
+        return Gdk.EVENT_PROPAGATE
+
+    def _on_close(self, *_):
+        for meter in self.meters.values():
+            meter.stop()
+        self.meters.clear()
+        if self._events and self._events.poll() is None:
+            self._events.terminate()
+        return False
+
+    # -- reading -----------------------------------------------------------
+
+    def _watch(self):
+        try:
+            self._events = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL, text=True)
+        except OSError:
+            return
+
+        def read():
+            for line in self._events.stdout:
+                if " client " in line or " module " in line:
+                    continue
+                GLib.idle_add(self._poke)
+        threading.Thread(target=read, daemon=True).start()
+
+    def _poke(self):
+        if self._poke_id is None:
+            self._poke_id = GLib.timeout_add(150, self._poked)
+        return GLib.SOURCE_REMOVE
+
+    def _poked(self):
+        self._poke_id = None
+        self.refresh()
+        return GLib.SOURCE_REMOVE
+
+    def refresh(self):
+        if self._probing:
+            self._again = True
+            return GLib.SOURCE_REMOVE
+        self._probing = True
+
+        def work():
+            snap = snapshot()
+            GLib.idle_add(self._apply, snap)
+        threading.Thread(target=work, daemon=True).start()
+        return GLib.SOURCE_REMOVE
+
+    def _apply(self, snap):
+        self._probing = False
+        self.snap = snap
+        shape = snap.key()
+        if shape != self.shape:
+            self.shape = shape
+            self._render()
+        else:
+            self._update_in_place()
+        if self._again:
+            self._again = False
+            self.refresh()
+        return GLib.SOURCE_REMOVE
+
+    def _items(self):
+        s = self.snap
+        return ([("sink", d) for d in s.sinks] + [("source", d) for d in s.sources]
+                + [("play", x) for x in s.playing] + [("rec", x) for x in s.recording])
+
+    def _update_in_place(self):
+        """Volumes and mutes, without rebuilding: someone may be dragging."""
+        self._quiet = True
+        now = time.monotonic()
+        for kind, item in self._items():
+            ident = (kind, item.index)
+            w = self.widgets.get(ident)
+            if not w:
+                continue
+            scale, value, mute, card = w
+            if now - self.touched.get(ident, 0) > 1.5:
+                scale.set_value(item.volume)
+                value.set_label(f"{item.volume} %")
+            self._paint_mute(mute, card, item.mute, kind)
+        self._quiet = False
+
+    # -- rendering ---------------------------------------------------------
+
+    @staticmethod
+    def _label(text, *classes, wrap=False, ellipsize=False, xalign=0):
+        lbl = Gtk.Label(label=text, xalign=xalign)
+        for c in classes:
+            lbl.add_css_class(c)
+        if wrap:
+            lbl.set_wrap(True)
+            lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        if ellipsize:
+            lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        return lbl
+
+    def _clear(self, box):
+        while (child := box.get_first_child()) is not None:
+            box.remove(child)
+
+    def _render(self):
+        self.widgets = {}
+        self.bars = {}
+        for box in self.pages.values():
+            self._clear(box)
+        s = self.snap
+
+        out = self.pages["outputs"]
+        if s.sinks:
+            for d in s.sinks:
+                out.append(self._device_card(d, d.name == s.default_sink))
+        else:
+            out.append(self._empty(self.s["no_out"]))
+
+        inp = self.pages["inputs"]
+        if s.sources:
+            for d in s.sources:
+                inp.append(self._device_card(d, d.name == s.default_source))
+        else:
+            inp.append(self._empty(self.s["no_in"], self.s["no_in_sub"]))
+
+        apps = self.pages["apps"]
+        apps.append(self._section(self.s["playing"]))
+        if s.playing:
+            for x in s.playing:
+                apps.append(self._stream_card(x))
+        else:
+            apps.append(self._empty(self.s["no_play"]))
+        apps.append(self._section(self.s["recording"]))
+        if s.recording:
+            for x in s.recording:
+                apps.append(self._stream_card(x))
+        else:
+            apps.append(self._empty(self.s["no_rec"]))
+
+        self._sync_meters()
+
+    def _section(self, title):
+        lbl = self._label(title.upper(), "hm-sec")
+        lbl.set_margin_top(10); lbl.set_margin_start(2)
+        return lbl
+
+    def _empty(self, title, sub=None):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        box.add_css_class("hm-empty")
+        box.append(self._label(title, "hm-name", xalign=0.5))
+        if sub:
+            box.append(self._label(sub, "hm-meta", xalign=0.5))
+        return box
+
+    def _name(self, d):
+        """ "Ryzen HD Audio Controller Analog Stereo" names the chip, not where
+        the sound comes out; the port, shown with it, says that."""
+        if d.where == "builtin":
+            return self.s["builtin_out" if d.kind == "sink" else "builtin_in"]
+        return d.label
+
+    def _kind_label(self, d):
+        return self.s["k_" + d.where]
+
+    def _port_label(self, d):
+        for name, desc, _avail in d.ports:
+            if name == d.port:
+                return desc
+        return None
+
+    def _device_card(self, d, is_default):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        card.add_css_class("hm-card")
+        if is_default:
+            card.add_css_class("hm-default")
+
+        top = Gtk.Box(spacing=10)
+        top.append(self._label(d.glyph, "hm-icon"))
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
+        texts.append(self._label(self._name(d), "hm-name", ellipsize=True))
+        bits = [self._kind_label(d)]
+        if d.codec:
+            bits.append(CODECS.get(d.codec, d.codec.upper()))
+        port = self._port_label(d)
+        if port and len(d.ports) <= 1:
+            bits.append(port)
+        texts.append(self._label("  ·  ".join(bits), "hm-meta", ellipsize=True))
+        top.append(texts)
+
+        if is_default:
+            chip = self._label(self.s["default"], "hm-chip")
+            chip.set_valign(Gtk.Align.CENTER)
+            top.append(chip)
+        else:
+            make = Gtk.Button(label=self.s["make_default"], valign=Gtk.Align.CENTER)
+            make.add_css_class("hm-act")
+            make.set_tooltip_text(self.s["make_default_tip" if d.kind == "sink" else "make_default_in"])
+            make.connect("clicked", lambda _b: self._default(d))
+            top.append(make)
+        card.append(top)
+
+        kind = d.kind
+        card.append(self._volume_row((kind, d.index), d, kind))
+
+        bar = Gtk.LevelBar(min_value=0, max_value=1, mode=Gtk.LevelBarMode.CONTINUOUS)
+        bar.add_offset_value("low", 0.80)
+        bar.add_offset_value("high", 0.95)
+        bar.add_offset_value("full", 1.0)
+        bar.set_margin_start(44)
+        bar.set_margin_end(52)
+        if d.tap:
+            self.bars[d.tap] = bar
+        card.append(bar)
+
+        if len(d.ports) > 1:
+            names = [n for n, _desc, _a in d.ports]
+            labels = [desc if avail else f"{desc} ({self.s['unplugged']})"
+                      for _n, desc, avail in d.ports]
+            row = Gtk.Box(spacing=8)
+            row.set_margin_start(34)
+            row.append(self._label(self.s["port"], "hm-meta"))
+            drop = Gtk.DropDown.new_from_strings(labels)
+            drop.set_hexpand(True)
+            if d.port in names:
+                drop.set_selected(names.index(d.port))
+            drop.connect("notify::selected", lambda w, _p: self._port(d, names[w.get_selected()]))
+            row.append(drop)
+            card.append(row)
+        return card
+
+    def _volume_row(self, ident, item, kind):
+        row = Gtk.Box(spacing=10)
+        mute = Gtk.Button(valign=Gtk.Align.CENTER)
+        mute.set_child(Gtk.Label())
+        mute.add_css_class("hm-round")
+        mute.connect("clicked", lambda _b: self._toggle_mute(kind, item))
+        row.append(mute)
+
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, VOLUME_MAX, 1)
+        scale.set_draw_value(False)
+        scale.set_hexpand(True)
+        scale.set_value(item.volume)
+        scale.add_mark(100, Gtk.PositionType.BOTTOM, None)
+        scale.set_valign(Gtk.Align.CENTER)
+        row.append(scale)
+
+        value = self._label(f"{item.volume} %", "hm-value", xalign=1)
+        row.append(value)
+        scale.connect("value-changed", lambda w: self._on_volume(ident, kind, item, w, value))
+
+        card_ref = row  # the card is set by the caller's parent; mute paints the row
+        self.widgets[ident] = (scale, value, mute, card_ref)
+        self._paint_mute(mute, card_ref, item.mute, kind)
+        return row
+
+    def _paint_mute(self, button, row, muted, kind):
+        mic = kind in ("source", "rec")
+        button.get_child().set_label((G_MIC_OFF if mic else G_MUTE) if muted
+                                     else (G_MIC if mic else G_VOL))
+        button.set_tooltip_text(self.s["unmute"] if muted else self.s["mute"])
+        if muted:
+            button.add_css_class("hm-muted")
+            row.add_css_class("hm-muted-card")
+        else:
+            button.remove_css_class("hm-muted")
+            row.remove_css_class("hm-muted-card")
+
+    def _stream_card(self, x):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        card.add_css_class("hm-card")
+        if x.corked:
+            card.add_css_class("hm-quiet")
+
+        top = Gtk.Box(spacing=10)
+        theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+        if x.icon and theme.has_icon(x.icon):
+            icon = Gtk.Image.new_from_icon_name(x.icon)
+            icon.set_pixel_size(22)
+            icon.set_size_request(24, -1)
+            top.append(icon)
+        else:
+            top.append(self._label(G_APP, "hm-icon"))
+
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
+        texts.append(self._label(x.app or self.s["unknown_app"], "hm-name", ellipsize=True))
+        meta = x.media
+        if x.corked:
+            meta = f"{meta}  ·  {self.s['paused']}" if meta else self.s["paused"]
+        if meta:
+            texts.append(self._label(meta, "hm-meta", ellipsize=True))
+        top.append(texts)
+
+        devices = self.snap.sinks if x.kind == "play" else self.snap.sources
+        if len(devices) > 1:
+            labels = [self._name(d) for d in devices]
+            indexes = [d.index for d in devices]
+            drop = Gtk.DropDown.new_from_strings(labels)
+            drop.set_valign(Gtk.Align.CENTER)
+            drop.set_size_request(170, -1)
+            if x.target in indexes:
+                drop.set_selected(indexes.index(x.target))
+            drop.connect("notify::selected",
+                         lambda w, _p: self._move(x, indexes[w.get_selected()]))
+            top.append(drop)
+        card.append(top)
+
+        if x.has_volume:
+            card.append(self._volume_row((x.kind, x.index), x, x.kind))
+        return card
+
+    # -- meters ------------------------------------------------------------
+
+    def _sync_meters(self):
+        """Meters only for the page on screen: a microphone meter opens the
+        microphone, and nothing should listen while nobody is looking."""
+        if self.snap is None:
+            return
+        page = self.stack.get_visible_child_name()
+        wanted = set()
+        if page == "outputs":
+            wanted = {d.tap for d in self.snap.sinks if d.tap}
+        elif page == "inputs":
+            wanted = {d.tap for d in self.snap.sources if d.tap}
+        for node in list(self.meters):
+            if node not in wanted:
+                self.meters.pop(node).stop()
+                self.levels.pop(node, None)
+        for node in wanted:
+            if node not in self.meters:
+                self.meters[node] = Meter(node, lambda level, n=node: self._level(n, level))
+
+    def _level(self, node, level):
+        # Fast up, slow down: the eye reads peaks, not flicker.
+        old = self.levels.get(node, 0.0)
+        smooth = level if level > old else old * 0.82 + level * 0.18
+        self.levels[node] = smooth
+        bar = self.bars.get(node)
+        if bar is not None:
+            bar.set_value(smooth)
+        return GLib.SOURCE_REMOVE
+
+    # -- actions -----------------------------------------------------------
+
+    def _on_volume(self, ident, kind, item, scale, value):
+        if self._quiet:
+            return
+        v = int(scale.get_value())
+        value.set_label(f"{v} %")
+        self.touched[ident] = time.monotonic()
+        first = ident not in self.pending_vol
+        self.pending_vol[ident] = v
+        if first:
+            def send():
+                vol = self.pending_vol.pop(ident, None)
+                if vol is not None:
+                    verb = {"sink": "set-sink-volume", "source": "set-source-volume",
+                            "play": "set-sink-input-volume",
+                            "rec": "set-source-output-volume"}[kind]
+                    target = item.name if kind in ("sink", "source") else str(item.index)
+                    fire(verb, target, f"{vol}%")
+                return GLib.SOURCE_REMOVE
+            GLib.timeout_add(50, send)
+
+    def _toggle_mute(self, kind, item):
+        verb = {"sink": "set-sink-mute", "source": "set-source-mute",
+                "play": "set-sink-input-mute", "rec": "set-source-output-mute"}[kind]
+        target = item.name if kind in ("sink", "source") else str(item.index)
+        item.mute = not item.mute
+        w = self.widgets.get((kind, item.index))
+        if w:
+            self._paint_mute(w[2], w[3], item.mute, kind)
+        fire(verb, target, "toggle")
+
+    def _default(self, d):
+        """An explicit choice: WirePlumber is told to remember it."""
+        fire("set-default-sink" if d.kind == "sink" else "set-default-source", d.name)
+
+    def _port(self, d, port):
+        if port != d.port:
+            fire("set-sink-port" if d.kind == "sink" else "set-source-port", d.name, port)
+
+    def _move(self, x, target):
+        if target != x.target:
+            fire("move-sink-input" if x.kind == "play" else "move-source-output",
+                 str(x.index), str(target))
+
+    def reload_theme(self):
+        Gtk.Settings.get_default().reset_property("gtk-theme-name")
+        self.shape = None
+        if self.snap:
+            self._apply(self.snap)
+        return GLib.SOURCE_REMOVE
+
+
+class App(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID,
+                         flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+
+    def do_command_line(self, cmdline):
+        args = cmdline.get_arguments()[1:]
+        page = None
+        if "--page" in args and args.index("--page") + 1 < len(args):
+            page = args[args.index("--page") + 1]
+        win = self.props.active_window
+        if win is None:
+            win = Mixer(self, page or "outputs")
+            signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(win.reload_theme))
+        elif page:
+            win.show_page(page)
+        win.present()
+        return 0
+
+
+if __name__ == "__main__":
+    if shutil.which("pactl") is None:
+        sys.exit("pactl is missing: install libpulse")
+    # the real argv: run(None) hands GApplication nothing, and --page never arrives
+    App().run(sys.argv)

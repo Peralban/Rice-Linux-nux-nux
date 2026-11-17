@@ -2,7 +2,7 @@
 
 A Hyprland desktop on Arch Linux, grown out of the
 [JaKooLit](https://github.com/JaKooLit/Hyprland-Dots) dotfiles and rebuilt
-around six hand-written GTK4 applications.
+around eight hand-written GTK4 applications.
 
 One rule governs the whole repository: **no colour is ever written by hand.**
 The wallpaper decides the palette, and fourteen surfaces follow it — the bar,
@@ -48,7 +48,7 @@ it, regenerates one file per target, and tells each one to look again.
 | hyprland | `hypr/colors.conf` | `hyprctl reload` |
 | hyprlock | reads `hypr/colors.conf` | sourced at launch |
 | kitty | `kitty/colors.conf` | `kill -SIGUSR1 $(pidof kitty)` |
-| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo)[.]py"` |
+| GTK 4 | `gtk-4.0/colors.css` | `pkill -SIGUSR1 -f "Hypr(Whale\|Notes\|Duo\|Mix\|Screens)[.]py"` |
 | GTK 3 | `gtk-3.0/colors.css` | `gtk3-reload.sh` — restart, see Notes |
 | hyprnotch | reads `waybar/colors.css` | file monitor, live |
 | swaync | imports `waybar/colors.css` | `swaync-client -rs` |
@@ -94,6 +94,8 @@ switcher, themed from the system palette.
 | **HyprKeys** | `Super + Shift + /` | Keybinding editor — captures the combination as you press it |
 | **HyprWhale** | click the whale | Docker: containers, start/stop, terminal, logs |
 | **HyprDuo** | `Super + A`, or right-click the volume | The same sound on several headsets or speakers at once |
+| **HyprMix** | `Super + Shift + A`, or right-click the microphone | Sound mixer: outputs, microphones with a live meter, per-application volume and routing |
+| **HyprScreens** | `Super + Shift + D` | Monitor layout and modes, with a timed confirmation |
 | **HyprNotch** | `Super + Shift + N`, or hover | Media, calendar, system, file shelf, AirDrop, pinned note |
 | **HyprNotes** | `Super + N` | Notes as plain text files, sidebar at the screen edge |
 | **CheatSheet** | `Super + /` | Filterable shortcut list in rofi |
@@ -208,6 +210,43 @@ Wi-Fi — starts to drop out.
 Sharing is deliberately **not** restored at login: the headsets are not
 connected yet then, and a default output with nothing behind it is silence.
 
+### HyprMix
+
+Replaces pavucontrol. Three pages — Outputs, Microphones, Applications — of
+cards: volume up to 150 %, mute, *make default*, the port, and a level meter.
+Applications get their own volume and a menu to move them to another output or
+microphone.
+
+The meters are one `parec` per device, 16 kHz mono, started only for the page
+on screen: an output meter taps its monitor and costs nothing, a microphone
+meter opens the microphone, so nothing listens while nobody is looking. The dB
+scale goes amber past −12 dBFS and red past −3: a built-in microphone that
+lives in the amber is set too hot.
+
+Updates come from `pactl subscribe`. The window is rebuilt only when the shape
+of things changes — a device or a stream comes or goes, a default or a port
+moves; volumes and mutes are updated in place, so a slider is never rebuilt
+under the finger dragging it.
+
+### HyprScreens
+
+Replaces nwg-displays. Drag the screens on the canvas — edges snap together —
+and set each one's resolution, refresh rate, scale, rotation, variable refresh
+and mirroring. Only scales that divide the resolution evenly are offered:
+Hyprland quietly picks another one otherwise.
+
+*Apply* sends each monitor live as `hl.monitor{…}` through `hyprctl eval`, then
+asks to keep it with a 15-second countdown; no answer brings the previous setup
+back. Hyprland does not refuse a mode it cannot drive — it answers `ok` and
+falls back to another — so the dialog reads the result back and says when what
+you got is not what you asked for.
+
+A kept setup goes to `~/.config/hypr/monitors.lua`, which `hyprland.lua` now
+loads on every reload. It did not before: the file nwg-displays wrote was never
+read, so a layout set there was gone at the next reload. Screens unplugged at
+save time keep their entries, and positions are never shifted back to 0,0 —
+moving only the plugged screens would land them on top of an absent one.
+
 ---
 
 ## Shortcuts
@@ -242,6 +281,8 @@ music playing.
 | `Super + Shift + E` | Yazi |
 | `Super + B` | Browser |
 | `Super + D` | Discord |
+| `Super + Shift + A` | Sound mixer |
+| `Super + Shift + D` | Displays |
 | `Super + J` | Jellyfin |
 | `Super + C` | Colour picker |
 | `Super + N` | Open / hide the notes |
@@ -299,8 +340,7 @@ sudo pacman -S --needed \
   awww matugen-bin thunar yazi adw-gtk-theme zathura zathura-pdf-mupdf \
   gnome-keyring seahorse \
   brightnessctl pamixer hyprpicker playerctl wl-clipboard grim slurp \
-  blueman bluez-utils pipewire-pulse network-manager-applet pavucontrol \
-  nwg-displays mission-center \
+  blueman bluez-utils pipewire-pulse network-manager-applet mission-center \
   tumbler poppler-glib ffmpegthumbnailer libgsf libgepub libopenraw \
   docker docker-compose docker-buildx lazydocker \
   python-gobject gtk4 libadwaita gtk4-layer-shell \

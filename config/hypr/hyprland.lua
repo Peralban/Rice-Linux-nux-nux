@@ -115,7 +115,20 @@ end
 -- MONITEUR
 --------------------------------------------------------------------------
 
+-- The built-in panel's defaults. monitors.lua, written by HyprScreens (and by
+-- nwg-displays before it), overrides them and adds the external screens. It
+-- used to be written and never read: this file held its own line instead, so
+-- any layout set in the tool was gone at the next reload.
 hl.monitor({ output = "eDP-1", mode = "3200x2000@120", position = "0x0", scale = 2 })
+do
+    local path = os.getenv("HOME") .. "/.config/hypr/monitors.lua"
+    local file = io.open(path, "r")
+    if file then
+        file:close()
+        local ok, err = pcall(dofile, path)
+        if not ok then print("monitors.lua: " .. tostring(err)) end
+    end
+end
 
 --------------------------------------------------------------------------
 -- PROGRAMMES
@@ -306,6 +319,10 @@ hl.window_rule({ name = "open-dialog", match = { initial_title = "(Open Files)" 
 -- the in-house panels (notes tile, so no rule)
 hl.window_rule({ name = "hyprsettings", match = { class = "dev.local.HyprSettings" }, float = true, size = "580 720", center = true })
 hl.window_rule({ name = "hyprkeys", match = { class = "dev.local.HyprKeys" }, float = true, size = "680 780", center = true })
+hl.window_rule({ name = "hyprscreens", match = { class = "dev.local.HyprScreens" }, float = true, size = "720 640", center = true,
+    opacity = "1.0 override 1.0 override" })
+hl.window_rule({ name = "hyprmix", match = { class = "dev.local.HyprMix" }, float = true, size = "560 720", center = true,
+    opacity = "1.0 override 1.0 override" })
 hl.window_rule({ name = "hyprwhale", match = { class = "dev.local.HyprWhale" }, float = true, move = "1178 66" })
 -- under the sound module; the app pins its own top-right corner afterwards.
 -- Locked (Super+A) it stays open without the focus, and the inactive opacity

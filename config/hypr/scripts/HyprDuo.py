@@ -1110,7 +1110,8 @@ class Duo(Adw.ApplicationWindow):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         box.set_margin_start(5); box.set_margin_end(5)
         box.set_margin_top(4); box.set_margin_bottom(5)
-        entries = [(self.s["mixer"], ("pavucontrol", "-t", "3"))]
+        mixer = os.path.join(os.path.dirname(os.path.realpath(__file__)), "HyprMix.py")
+        entries = [(self.s["mixer"], (mixer,) if os.path.exists(mixer) else ("pavucontrol", "-t", "3"))]
         if self.snap.bt != "absent" and shutil.which("blueman-manager"):
             entries.append((self.s["bt_settings"], ("blueman-manager",)))
         for label, argv in entries:
