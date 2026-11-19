@@ -91,7 +91,30 @@ def layer_geometry(namespace="waybar"):
 
     More reliable than recomputing a height from the font: this measures what
     is actually displayed, and it follows settings changed in HyprSettings on
-    its own."""
+    its own.
+
+    In the monitor's own coordinates: Hyprland reports layers in the global
+    layout, and the notch lays itself out inside its own surface. With the
+    screen at 0,0 the two agreed by luck; with a layout that puts it at
+    120,1080 (an external screen above), the bar read as 1081 px down and the
+    notch drew its pill off the bottom of the screen -- leaving an invisible
+    full-height strip that took the pointer in the middle of the screen."""
+    data = _ask(b"j/layers")
+    if data is None:
+        return None
+    origins = {m.get("name"): (m.get("x", 0), m.get("y", 0)) for m in (_ask(b"j/monitors") or [])}
+    for name, monitor in data.items():
+        ox, oy = origins.get(name, (0, 0))
+        for group in monitor.get("levels", {}).values():
+            for layer in group:
+                if layer.get("namespace") == namespace:
+                    return {"x": layer["x"] - ox, "y": layer["y"] - oy,
+                            "w": layer["w"], "h": layer["h"]}
+    return None
+
+
+def _ask(command):
+    """One JSON request to Hyprland's socket, or None."""
     path = _hypr_socket()
     if not path:
         return None
@@ -99,23 +122,16 @@ def layer_geometry(namespace="waybar"):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(0.4)
             sock.connect(path)
-            sock.sendall(b"j/layers")
+            sock.sendall(command)
             chunks = []
             while True:
                 chunk = sock.recv(65536)
                 if not chunk:
                     break
                 chunks.append(chunk)
-        data = json.loads(b"".join(chunks).decode())
+        return json.loads(b"".join(chunks).decode())
     except (OSError, ValueError):
         return None
-    for monitor in data.values():
-        for group in monitor.get("levels", {}).values():
-            for layer in group:
-                if layer.get("namespace") == namespace:
-                    return {"x": layer["x"], "y": layer["y"],
-                            "w": layer["w"], "h": layer["h"]}
-    return None
 
 
 def island_metrics():
